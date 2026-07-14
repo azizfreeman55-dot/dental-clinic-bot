@@ -855,7 +855,7 @@ function Referral({ onBack }) {
   }
 
   function shareLink() {
-    const text = encodeURIComponent('Присоединяйся к Smile Clinic и получи бонус на первый визит! 🦷')
+    const text = encodeURIComponent('Присоединяйся к Стоматологии Жемчужина и получи бонус на первый визит! 🦷')
     tg?.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(data.link)}&text=${text}`)
   }
 

@@ -39,7 +39,7 @@ async def cmd_start(message: Message, command: CommandObject):
     if created:
         greeting = (
             f"Здравствуйте, {message.from_user.first_name}! 👋\n\n"
-            "Добро пожаловать в Smile Clinic Bot — вашу личную стоматологию.\n"
+            "Добро пожаловать в Стоматологию Жемчужина — вашу личную стоматологию.\n"
             "Здесь вы можете записаться на приём, копить бонусы и получать подарки."
         )
     else:
