@@ -14,6 +14,7 @@ from database.pool import init_pool, close_pool, get_pool
 from database.migrate import apply_migrations
 from database.queries.admin import ensure_admin
 from services.slot_generator import generate_slots_for_all_doctors, setup_scheduler_jobs
+from services.reminders import send_reminders
 
 from bot_handlers import start, booking, referral, profile, patient_actions
 from bot_handlers.admin import appointments as admin_appointments
@@ -50,6 +51,14 @@ async def on_startup(bot: Bot):
 
     scheduler = AsyncIOScheduler(timezone="Asia/Tashkent")
     setup_scheduler_jobs(scheduler, pool)
+    scheduler.add_job(
+        send_reminders,
+        "interval",
+        minutes=15,
+        args=[bot, pool],
+        id="send_reminders",
+        replace_existing=True,
+    )
     scheduler.start()
 
     if config.WEBHOOK_URL:
