@@ -7,6 +7,7 @@ from database.queries.patients import get_or_create_patient, get_patient_level_i
 from database.queries.doctors import get_active_services, get_doctors_for_service, get_available_dates
 from database.queries.appointments import get_free_slots, book_slot
 from database.queries.referrals import get_referral_stats, REFERRER_BONUS_DEFAULT, REFERRED_BONUS_DEFAULT
+from services.notifications import notify_admins_new_appointment
 
 routes = web.RouteTableDef()
 
@@ -53,6 +54,8 @@ async def list_services(request: web.Request):
 
 @routes.get("/api/doctors")
 async def list_doctors(request: web.Request):
+    from database.queries.doctors import shift_label
+
     service_id = request.query.get("service_id")
     if not service_id:
         return web.json_response({"error": "service_id обязателен"}, status=400)
@@ -60,7 +63,13 @@ async def list_doctors(request: web.Request):
     pool = get_pool()
     doctors = await get_doctors_for_service(pool, int(service_id))
     return web.json_response([
-        {"id": d["id"], "full_name": d["full_name"], "specialization": d["specialization"], "photo_url": d["photo_url"]}
+        {
+            "id": d["id"],
+            "full_name": d["full_name"],
+            "specialization": d["specialization"],
+            "photo_url": d["photo_url"],
+            "shift": shift_label(d["shift_start"]),
+        }
         for d in doctors
     ])
 
@@ -114,6 +123,9 @@ async def create_booking(request: web.Request):
 
     if appointment_id is None:
         return web.json_response({"error": "slot_taken", "message": "Слот только что заняли, выберите другой"}, status=409)
+
+    bot = request.app["bot"]
+    await notify_admins_new_appointment(bot, pool, appointment_id)
 
     return web.json_response({"appointment_id": appointment_id, "status": "pending"})
 

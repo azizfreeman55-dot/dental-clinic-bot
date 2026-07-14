@@ -19,9 +19,12 @@ def services_kb(services: list) -> InlineKeyboardMarkup:
 
 
 def doctors_kb(doctors: list) -> InlineKeyboardMarkup:
+    from database.queries.doctors import shift_label
     builder = InlineKeyboardBuilder()
     for d in doctors:
-        builder.button(text=f"{d['full_name']} — {d['specialization']}", callback_data=f"doc:{d['id']}")
+        label = shift_label(d["shift_start"])
+        text = f"{d['full_name']} — {label}" if label else d['full_name']
+        builder.button(text=text, callback_data=f"doc:{d['id']}")
     builder.button(text="⬅️ Назад", callback_data="back:service")
     builder.adjust(1)
     return builder.as_markup()

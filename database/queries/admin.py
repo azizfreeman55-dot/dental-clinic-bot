@@ -7,6 +7,11 @@ async def is_admin(pool: asyncpg.Pool, telegram_id: int) -> bool:
     return row is not None
 
 
+async def get_admin_telegram_ids(pool: asyncpg.Pool) -> list[int]:
+    rows = await pool.fetch("SELECT telegram_id FROM admins")
+    return [r["telegram_id"] for r in rows]
+
+
 async def ensure_admin(pool: asyncpg.Pool, telegram_id: int, full_name: str = "Owner") -> None:
     """
     Вызывается при каждом старте бота, если задана переменная окружения ADMIN_TELEGRAM_ID.

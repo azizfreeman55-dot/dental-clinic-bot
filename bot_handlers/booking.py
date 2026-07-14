@@ -10,6 +10,7 @@ from database.queries.doctors import (
 )
 from database.queries.appointments import get_free_slots, book_slot
 from database.queries.patients import get_patient_by_telegram_id
+from services.notifications import notify_admins_new_appointment
 from states import BookingStates
 from keyboards.booking_kb import services_kb, doctors_kb, dates_kb, slots_kb, confirm_kb, WEEKDAYS_RU, MONTHS_RU
 
@@ -157,7 +158,7 @@ async def cancel_confirmation(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(BookingStates.confirming, F.data == "confirm:yes")
-async def confirm_booking(callback: CallbackQuery, state: FSMContext):
+async def confirm_booking(callback: CallbackQuery, state: FSMContext, bot):
     data = await state.get_data()
     pool = get_pool()
 
@@ -191,5 +192,4 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext):
     )
     await callback.answer()
 
-    # TODO: уведомление админам в ADMIN_NOTIFY_CHAT_ID о новой заявке (appointment_id)
-    # реализуем вместе с admin-хэндлерами на следующем шаге
+    await notify_admins_new_appointment(bot, pool, appointment_id)

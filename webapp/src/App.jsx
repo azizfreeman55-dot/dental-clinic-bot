@@ -165,7 +165,7 @@ function Booking({ onBack }) {
           render={(d) => (
             <>
               <span>{d.full_name}</span>
-              <span className="price">{d.specialization}</span>
+              <span className="price">{d.shift || d.specialization}</span>
             </>
           )}
           onSelect={chooseDoctor}

@@ -11,14 +11,23 @@ async def get_active_services(pool: asyncpg.Pool) -> list[asyncpg.Record]:
 async def get_doctors_for_service(pool: asyncpg.Pool, service_id: int) -> list[asyncpg.Record]:
     return await pool.fetch(
         """
-        SELECT d.id, d.full_name, d.specialization, d.photo_url
+        SELECT d.id, d.full_name, d.specialization, d.photo_url,
+               (SELECT MIN(t.start_time) FROM doctor_schedule_templates t
+                WHERE t.doctor_id = d.id AND t.active = TRUE) AS shift_start
         FROM doctors d
         JOIN doctor_services ds ON ds.doctor_id = d.id
         WHERE ds.service_id = $1 AND d.active = TRUE
-        ORDER BY d.full_name
+        ORDER BY shift_start, d.full_name
         """,
         service_id,
     )
+
+
+def shift_label(shift_start) -> str:
+    """shift_start — time начала смены врача. До полудня — дневная, после — вечерняя."""
+    if shift_start is None:
+        return ""
+    return "Дневная смена (9:00–18:00)" if shift_start.hour < 12 else "Вечерняя смена (18:00–24:00)"
 
 
 async def get_available_dates(pool: asyncpg.Pool, doctor_id: int, days_ahead: int = 14) -> list[date]:

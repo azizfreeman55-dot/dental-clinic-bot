@@ -14,10 +14,6 @@ def main_menu_kb():
     builder = InlineKeyboardBuilder()
     if config.MINI_APP_URL:
         builder.button(text="📱 Личный кабинет", web_app=WebAppInfo(url=config.MINI_APP_URL))
-    builder.button(text="📅 Записаться на приём", callback_data="menu:book")
-    builder.button(text="🎁 Бонусы и подарки", callback_data="menu:bonuses")
-    builder.button(text="👥 Пригласить друга", callback_data="menu:referral")
-    builder.button(text="⭐ Мой уровень", callback_data="menu:level")
     builder.adjust(1)
     return builder.as_markup()
 
