@@ -9,6 +9,7 @@ from database.queries.admin import (
 )
 from database.queries.appointments import confirm_appointment, cancel_appointment, propose_reschedule, get_free_slots
 from database.queries.doctors import get_available_dates, shift_label
+from database.queries.achievements import check_and_award_achievements
 
 routes = web.RouteTableDef()
 
@@ -292,6 +293,25 @@ async def admin_complete(request: web.Request):
             result["referrer_telegram_id"],
             f"🎉 Ваш друг посетил клинику впервые!\nВам начислено {result['referrer_bonus']} бонусов за приглашение.",
         )
+
+    new_achievements = await check_and_award_achievements(pool, a["patient_pk"])
+    for ach in new_achievements:
+        await bot.send_message(
+            a["patient_telegram_id"],
+            f"🏆 Новое достижение: {ach['icon']} «{ach['name']}»!\n{ach['description']}",
+        )
+
+    if result["referral_applied"] and result["referrer_telegram_id"]:
+        referrer_row = await pool.fetchrow(
+            "SELECT id FROM patients WHERE telegram_id = $1", result["referrer_telegram_id"]
+        )
+        if referrer_row:
+            referrer_new_achievements = await check_and_award_achievements(pool, referrer_row["id"])
+            for ach in referrer_new_achievements:
+                await bot.send_message(
+                    result["referrer_telegram_id"],
+                    f"🏆 Новое достижение: {ach['icon']} «{ach['name']}»!\n{ach['description']}",
+                )
 
     return web.json_response({"ok": True, **result})
 

@@ -66,6 +66,9 @@ export const api = {
   getWheelPrizes: () => request('/api/wheel/prizes'),
   getWheelStatus: () => request('/api/wheel/status'),
   spinWheel: () => request('/api/wheel/spin', { method: 'POST' }),
+
+  // Achievements
+  getAchievements: () => request('/api/achievements'),
 };
 
 export { tg };

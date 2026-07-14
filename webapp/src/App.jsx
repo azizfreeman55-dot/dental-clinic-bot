@@ -29,6 +29,7 @@ export default function App() {
       {screen === 'level' && <Level onBack={() => setScreen('home')} />}
       {screen === 'gifts' && <Gifts onBack={() => setScreen('home')} />}
       {screen === 'wheel' && <Wheel onBack={() => setScreen('home')} />}
+      {screen === 'achievements' && <Achievements onBack={() => setScreen('home')} />}
       {screen === 'admin' && <AdminPanel onBack={() => setScreen('home')} />}
     </div>
   )
@@ -69,6 +70,10 @@ function Home({ onNavigate }) {
       </button>
       <button className="list-item" onClick={() => onNavigate('wheel')}>
         <span>🎰 Колесо фортуны</span>
+        <span>›</span>
+      </button>
+      <button className="list-item" onClick={() => onNavigate('achievements')}>
+        <span>🏆 Достижения</span>
         <span>›</span>
       </button>
       <button className="list-item" onClick={() => onNavigate('referral')}>
@@ -428,6 +433,60 @@ const STATUS_LABELS = {
   cancelled_by_patient: 'Отменена пациентом',
   cancelled_by_admin: 'Отклонена админом',
   awaiting_reschedule: 'Ждём ответ на перенос',
+}
+
+// ---------- Achievements ----------
+
+function Achievements({ onBack }) {
+  const [items, setItems] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    api.getAchievements().then(setItems).catch((e) => setError(e.message))
+  }, [])
+
+  if (error) return <div className="error">{error}</div>
+  if (!items) return <div className="loading">Загрузка…</div>
+
+  const earnedCount = items.filter((a) => a.earned).length
+
+  return (
+    <div>
+      <div className="title">Достижения</div>
+      <div className="subtitle">Получено {earnedCount} из {items.length}</div>
+
+      {items.map((a) => (
+        <div
+          key={a.id}
+          className="card"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 14,
+            opacity: a.earned ? 1 : 0.45,
+          }}
+        >
+          <div style={{
+            fontSize: 32, width: 52, height: 52, borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: a.earned ? 'linear-gradient(135deg, var(--accent), #1a4fc4)' : 'var(--bg)',
+            border: '1px solid var(--border)', flexShrink: 0,
+          }}>
+            {a.icon}
+          </div>
+          <div>
+            <div style={{ fontWeight: 700 }}>{a.name}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{a.description}</div>
+            {a.earned && (
+              <div style={{ fontSize: 11, color: 'var(--accent-lime)', marginTop: 2 }}>
+                ✓ Получено {new Date(a.earned_at).toLocaleDateString('ru-RU')}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+
+      <button className="btn-secondary" onClick={onBack}>⬅️ На главную</button>
+    </div>
+  )
 }
 
 function AdminPanel({ onBack }) {

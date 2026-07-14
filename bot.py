@@ -23,6 +23,7 @@ from api.routes import booking as api_booking
 from api.routes import admin as api_admin
 from api.routes import gifts as api_gifts
 from api.routes import wheel as api_wheel
+from api.routes import achievements as api_achievements
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -96,6 +97,7 @@ def main():
         app.add_routes(api_admin.routes)
         app.add_routes(api_gifts.routes)
         app.add_routes(api_wheel.routes)
+        app.add_routes(api_achievements.routes)
 
         # раздача собранного Mini App (webapp/dist после `npm run build`).
         # aiohttp.static НЕ отдаёт index.html автоматически для корня папки (в отличие от nginx),

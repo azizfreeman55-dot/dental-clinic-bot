@@ -15,6 +15,7 @@ from database.queries.appointments import (
 )
 from database.queries.doctors import get_available_dates, shift_label
 from database.queries.appointments import get_free_slots
+from database.queries.achievements import check_and_award_achievements
 from bot_handlers.admin.filters import IsAdmin
 from states import AdminStates
 
@@ -383,3 +384,23 @@ async def receive_amount_paid(message: Message, state: FSMContext, bot: Bot):
             f"🎉 Ваш друг посетил клинику впервые!\n"
             f"Вам начислено {result['referrer_bonus']} бонусов за приглашение.",
         )
+
+    # проверяем достижения — и у самого пациента, и у того, кто его пригласил (если применимо)
+    new_achievements = await check_and_award_achievements(pool, a["patient_pk"])
+    for ach in new_achievements:
+        await bot.send_message(
+            a["patient_telegram_id"],
+            f"🏆 Новое достижение: {ach['icon']} «{ach['name']}»!\n{ach['description']}",
+        )
+
+    if result["referral_applied"] and result["referrer_telegram_id"]:
+        referrer_id_row = await pool.fetchrow(
+            "SELECT id FROM patients WHERE telegram_id = $1", result["referrer_telegram_id"]
+        )
+        if referrer_id_row:
+            referrer_new_achievements = await check_and_award_achievements(pool, referrer_id_row["id"])
+            for ach in referrer_new_achievements:
+                await bot.send_message(
+                    result["referrer_telegram_id"],
+                    f"🏆 Новое достижение: {ach['icon']} «{ach['name']}»!\n{ach['description']}",
+                )
