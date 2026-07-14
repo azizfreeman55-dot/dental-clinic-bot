@@ -60,11 +60,18 @@ async def update_profile(request: web.Request):
 
     full_name = (body.get("full_name") or "").strip() or None
     phone = (body.get("phone") or "").strip() or None
-    birth_date = (body.get("birth_date") or "").strip() or None
+    birth_date_str = (body.get("birth_date") or "").strip() or None
     gender = body.get("gender") or None
 
     if gender is not None and gender not in ("male", "female"):
         return web.json_response({"error": "gender должен быть 'male' или 'female'"}, status=400)
+
+    birth_date = None
+    if birth_date_str is not None:
+        try:
+            birth_date = date_cls.fromisoformat(birth_date_str)
+        except ValueError:
+            return web.json_response({"error": "birth_date должен быть в формате YYYY-MM-DD"}, status=400)
 
     updated = await update_patient_profile(
         pool, patient["id"],

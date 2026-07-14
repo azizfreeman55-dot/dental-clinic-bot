@@ -1,5 +1,6 @@
 import asyncpg
 from typing import Optional
+from datetime import date as date_type
 
 
 async def get_patient_by_telegram_id(pool: asyncpg.Pool, telegram_id: int) -> Optional[asyncpg.Record]:
@@ -75,7 +76,7 @@ async def update_patient_profile(
     patient_id: int,
     full_name: Optional[str] = None,
     phone: Optional[str] = None,
-    birth_date: Optional[str] = None,
+    birth_date: Optional[date_type] = None,
     gender: Optional[str] = None,
 ) -> asyncpg.Record:
     """Обновляет только переданные поля (None — не трогаем текущее значение)."""
