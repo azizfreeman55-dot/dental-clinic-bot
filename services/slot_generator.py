@@ -25,7 +25,7 @@ def _generate_time_slots(start: dt_time, end: dt_time, duration_min: int) -> lis
     end_dt = datetime.combine(date.today(), end)
     step = timedelta(minutes=duration_min)
 
-    while cursor + step <= end_dt:
+    while cursor < end_dt:
         slot_start = cursor.time()
         slot_end = (cursor + step).time()
         slots.append((slot_start, slot_end))
