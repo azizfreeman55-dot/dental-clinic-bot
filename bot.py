@@ -74,6 +74,7 @@ def main():
     if config.WEBHOOK_BASE_URL:
         # ---------- Продакшн: webhook + aiohttp (нужен для Render и для будущего Mini App API) ----------
         app = web.Application(middlewares=[telegram_auth_middleware])
+        app["bot"] = bot
 
         SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=config.WEBHOOK_PATH)
         setup_application(app, dp, bot=bot)

@@ -1,5 +1,6 @@
 from aiohttp import web
 from datetime import date as date_cls
+import json
 
 from database.pool import get_pool
 from database.queries.patients import get_or_create_patient, get_patient_level_info
@@ -23,6 +24,9 @@ async def get_me(request: web.Request):
     )
     level_info = await get_patient_level_info(pool, patient["id"])
 
+    benefits_raw = level_info["benefits"]
+    benefits = json.loads(benefits_raw) if isinstance(benefits_raw, str) else (benefits_raw or [])
+
     return web.json_response({
         "id": patient["id"],
         "full_name": patient["full_name"],
@@ -31,6 +35,7 @@ async def get_me(request: web.Request):
         "bonus_percent": float(level_info["bonus_percent"]),
         "next_level_threshold": level_info["next_level_threshold"],
         "lifetime_bonus_earned": level_info["lifetime_bonus_earned"],
+        "benefits": benefits,
     })
 
 
@@ -123,8 +128,12 @@ async def referral_info(request: web.Request):
     patient, _ = await get_or_create_patient(pool, telegram_id=telegram_id, full_name=request["telegram_user"].get("first_name", "Пациент"))
     stats = await get_referral_stats(pool, patient["id"])
 
+    bot = request.app["bot"]
+    bot_info = await bot.get_me()
+    link = f"https://t.me/{bot_info.username}?start=ref_{telegram_id}"
+
     return web.json_response({
-        "telegram_id": telegram_id,
+        "link": link,
         "rewarded_count": stats["rewarded_count"],
         "pending_count": stats["pending_count"],
         "total_earned": stats["total_earned"],

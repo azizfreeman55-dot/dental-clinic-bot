@@ -26,6 +26,8 @@ export default function App() {
       {screen === 'home' && <Home onNavigate={setScreen} />}
       {screen === 'booking' && <Booking onBack={() => setScreen('home')} />}
       {screen === 'referral' && <Referral onBack={() => setScreen('home')} />}
+      {screen === 'level' && <Level onBack={() => setScreen('home')} />}
+      {screen === 'gifts' && <Gifts onBack={() => setScreen('home')} />}
     </div>
   )
 }
@@ -53,6 +55,14 @@ function Home({ onNavigate }) {
 
       <button className="list-item" onClick={() => onNavigate('booking')}>
         <span>📅 Записаться на приём</span>
+        <span>›</span>
+      </button>
+      <button className="list-item" onClick={() => onNavigate('level')}>
+        <span>⭐ Мой уровень</span>
+        <span>›</span>
+      </button>
+      <button className="list-item" onClick={() => onNavigate('gifts')}>
+        <span>🎁 Бонусы и подарки</span>
         <span>›</span>
       </button>
       <button className="list-item" onClick={() => onNavigate('referral')}>
@@ -242,6 +252,7 @@ function List({ items, render, onSelect, onBack }) {
 function Referral({ onBack }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     api.getReferral().then(setData).catch((e) => setError(e.message))
@@ -250,6 +261,18 @@ function Referral({ onBack }) {
   if (error) return <div className="error">{error}</div>
   if (!data) return <div className="loading">Загрузка…</div>
 
+  function copyLink() {
+    navigator.clipboard?.writeText(data.link)
+    setCopied(true)
+    tg?.HapticFeedback?.notificationOccurred('success')
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  function shareLink() {
+    const text = encodeURIComponent('Присоединяйся к Smile Clinic и получи бонус на первый визит! 🦷')
+    tg?.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(data.link)}&text=${text}`)
+  }
+
   return (
     <div>
       <div className="title">Пригласить друга</div>
@@ -257,12 +280,95 @@ function Referral({ onBack }) {
         <div>🎁 Друг получает {fmtMoney(data.referred_bonus_default)} бонусов на первый визит</div>
         <div>💰 Вы получаете {fmtMoney(data.referrer_bonus_default)} бонусов, когда друг придёт</div>
       </div>
+
+      <div className="card">
+        <div className="subtitle">Ваша ссылка</div>
+        <div style={{ wordBreak: 'break-all', fontSize: 13, marginBottom: 10 }}>{data.link}</div>
+        <button className="btn-primary" onClick={shareLink}>Поделиться в Telegram</button>
+        <button className="btn-secondary" onClick={copyLink}>{copied ? '✓ Скопировано' : 'Скопировать ссылку'}</button>
+      </div>
+
       <div className="card">
         <div>Приглашено и получили бонус: {data.rewarded_count}</div>
         <div>Ждут первого визита: {data.pending_count}</div>
         <div>Всего заработано: {fmtMoney(data.total_earned)} бонусов</div>
       </div>
-      <div className="subtitle">Ссылку для приглашения можно получить в чате бота, кнопка «Пригласить друга»</div>
+
+      <button className="btn-secondary" onClick={onBack}>⬅️ На главную</button>
+    </div>
+  )
+}
+
+// ---------- Level ----------
+
+function Level({ onBack }) {
+  const [me, setMe] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    api.getMe().then(setMe).catch((e) => setError(e.message))
+  }, [])
+
+  if (error) return <div className="error">{error}</div>
+  if (!me) return <div className="loading">Загрузка…</div>
+
+  const remaining = me.next_level_threshold != null
+    ? Math.max(0, me.next_level_threshold - me.lifetime_bonus_earned)
+    : null
+
+  return (
+    <div>
+      <div className="title">Мой уровень</div>
+
+      <div className="balance-hero">
+        <div className="label">Уровень</div>
+        <div className="amount" style={{ fontSize: 26 }}>{me.level_name}</div>
+        <div className="label">{me.bonus_percent}% бонусов с каждого визита</div>
+      </div>
+
+      <div className="card">
+        <div>💰 Баланс: {fmtMoney(me.bonus_balance)} бонусов</div>
+        <div>📈 Накоплено за всё время: {fmtMoney(me.lifetime_bonus_earned)}</div>
+        {remaining !== null ? (
+          <div>🎯 До следующего уровня: {fmtMoney(remaining)} бонусов</div>
+        ) : (
+          <div>🏆 Это максимальный уровень</div>
+        )}
+      </div>
+
+      {me.benefits?.length > 0 && (
+        <div className="card">
+          <div className="subtitle">Ваши привилегии</div>
+          {me.benefits.map((b, i) => <div key={i}>✓ {b}</div>)}
+        </div>
+      )}
+
+      <button className="btn-secondary" onClick={onBack}>⬅️ На главную</button>
+    </div>
+  )
+}
+
+// ---------- Gifts ----------
+
+function Gifts({ onBack }) {
+  const [me, setMe] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    api.getMe().then(setMe).catch((e) => setError(e.message))
+  }, [])
+
+  if (error) return <div className="error">{error}</div>
+  if (!me) return <div className="loading">Загрузка…</div>
+
+  return (
+    <div>
+      <div className="title">Бонусы и подарки</div>
+      <div className="balance-hero">
+        <div className="label">Ваш баланс</div>
+        <div className="amount">{fmtMoney(me.bonus_balance)}</div>
+      </div>
+      <div className="empty">Каталог подарков и услуг за бонусы скоро появится здесь 🎁</div>
       <button className="btn-secondary" onClick={onBack}>⬅️ На главную</button>
     </div>
   )
