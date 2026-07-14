@@ -1,16 +1,19 @@
 from aiogram import Router, F
 from aiogram.filters import CommandStart, CommandObject
-from aiogram.types import Message
+from aiogram.types import Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database.pool import get_pool
 from database.queries.patients import get_or_create_patient
+import config
 
 router = Router(name="start")
 
 
 def main_menu_kb():
     builder = InlineKeyboardBuilder()
+    if config.MINI_APP_URL:
+        builder.button(text="📱 Личный кабинет", web_app=WebAppInfo(url=config.MINI_APP_URL))
     builder.button(text="📅 Записаться на приём", callback_data="menu:book")
     builder.button(text="🎁 Бонусы и подарки", callback_data="menu:bonuses")
     builder.button(text="👥 Пригласить друга", callback_data="menu:referral")
@@ -43,8 +46,6 @@ async def cmd_start(message: Message, command: CommandObject):
             "Добро пожаловать в Smile Clinic Bot — вашу личную стоматологию.\n"
             "Здесь вы можете записаться на приём, копить бонусы и получать подарки."
         )
-        # TODO: если referrer_telegram_id указан — здесь позже добавим начисление
-        # бонусов рефереру (шаг 5 плана, таблица referrals + bonus_transactions type='referral')
     else:
         greeting = f"С возвращением, {message.from_user.first_name}! 👋"
 

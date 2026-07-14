@@ -72,13 +72,24 @@ async def complete_appointment_with_bonus(
     doctor_id: int,
     amount_paid: float,
     bonus_percent: float,
-) -> int:
+) -> dict:
     """
     Отмечает визит завершённым, пишет в treatment_history и начисляет бонусы
     через bonus_transactions (триггер в БД сам обновит баланс и уровень пациента).
-    Возвращает количество начисленных бонусов.
+
+    Если это ПЕРВЫЙ визит пациента и он пришёл по реферальной ссылке —
+    дополнительно начисляет бонусы и ему, и пригласившему, и уведомляет об этом (возвращает данные для уведомления).
+
+    Возвращает dict: {bonuses_earned, referral_applied, referrer_telegram_id, referrer_bonus, referred_bonus}
     """
     bonuses_earned = round(amount_paid * float(bonus_percent) / 100)
+    result = {
+        "bonuses_earned": bonuses_earned,
+        "referral_applied": False,
+        "referrer_telegram_id": None,
+        "referrer_bonus": 0,
+        "referred_bonus": 0,
+    }
 
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -100,9 +111,55 @@ async def complete_appointment_with_bonus(
                 """,
                 patient_id, bonuses_earned, appointment_id,
             )
+
+            visits_before = await conn.fetchval(
+                "SELECT total_visits FROM patients WHERE id = $1", patient_id
+            )
+
             await conn.execute(
                 "UPDATE patients SET total_visits = total_visits + 1 WHERE id = $1",
                 patient_id,
             )
 
-    return bonuses_earned
+            # это был первый визит пациента (visits_before == 0) — проверяем реферальный статус
+            if visits_before == 0:
+                referral = await conn.fetchrow(
+                    """
+                    SELECT id, referrer_id, referrer_bonus, referred_bonus
+                    FROM referrals
+                    WHERE referred_id = $1 AND status = 'pending'
+                    FOR UPDATE
+                    """,
+                    patient_id,
+                )
+
+                if referral:
+                    await conn.execute(
+                        "UPDATE referrals SET status = 'rewarded', rewarded_at = now() WHERE id = $1",
+                        referral["id"],
+                    )
+                    await conn.execute(
+                        """
+                        INSERT INTO bonus_transactions (patient_id, amount, type, description, related_id)
+                        VALUES ($1, $2, 'referral', 'Бонус за приглашённого друга', $3)
+                        """,
+                        referral["referrer_id"], referral["referrer_bonus"], referral["id"],
+                    )
+                    await conn.execute(
+                        """
+                        INSERT INTO bonus_transactions (patient_id, amount, type, description, related_id)
+                        VALUES ($1, $2, 'referral', 'Бонус за первый визит по приглашению', $3)
+                        """,
+                        patient_id, referral["referred_bonus"], referral["id"],
+                    )
+
+                    referrer_telegram_id = await conn.fetchval(
+                        "SELECT telegram_id FROM patients WHERE id = $1", referral["referrer_id"]
+                    )
+
+                    result["referral_applied"] = True
+                    result["referrer_telegram_id"] = referrer_telegram_id
+                    result["referrer_bonus"] = referral["referrer_bonus"]
+                    result["referred_bonus"] = referral["referred_bonus"]
+
+    return result

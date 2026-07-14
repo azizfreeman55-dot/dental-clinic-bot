@@ -29,14 +29,29 @@ async def get_or_create_patient(
         if referrer:
             referrer_id = referrer["id"]
 
-    row = await pool.fetchrow(
-        """
-        INSERT INTO patients (telegram_id, full_name, referrer_id, level_id)
-        VALUES ($1, $2, $3, (SELECT id FROM loyalty_levels ORDER BY sort_order LIMIT 1))
-        RETURNING *
-        """,
-        telegram_id, full_name, referrer_id,
-    )
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                """
+                INSERT INTO patients (telegram_id, full_name, referrer_id, level_id)
+                VALUES ($1, $2, $3, (SELECT id FROM loyalty_levels ORDER BY sort_order LIMIT 1))
+                RETURNING *
+                """,
+                telegram_id, full_name, referrer_id,
+            )
+
+            if referrer_id:
+                # бонусы начислятся не сейчас, а при первом завершённом визите приглашённого —
+                # см. database/queries/admin.py: complete_appointment_with_bonus
+                await conn.execute(
+                    """
+                    INSERT INTO referrals (referrer_id, referred_id)
+                    VALUES ($1, $2)
+                    ON CONFLICT (referred_id) DO NOTHING
+                    """,
+                    referrer_id, row["id"],
+                )
+
     return row, True
 
 

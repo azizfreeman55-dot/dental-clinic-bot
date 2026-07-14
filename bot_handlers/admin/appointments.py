@@ -188,7 +188,7 @@ async def receive_amount_paid(message: Message, state: FSMContext, bot: Bot):
     pool = get_pool()
     a = await get_appointment_full(pool, appointment_id)
 
-    bonuses = await complete_appointment_with_bonus(
+    result = await complete_appointment_with_bonus(
         pool,
         appointment_id=appointment_id,
         patient_id=a["patient_pk"],
@@ -201,13 +201,26 @@ async def receive_amount_paid(message: Message, state: FSMContext, bot: Bot):
 
     price_str = f"{int(amount_paid):,}".replace(",", " ")
     await message.answer(
-        f"✅ Визит отмечен завершённым.\nНачислено бонусов: {bonuses}"
+        f"✅ Визит отмечен завершённым.\nНачислено бонусов: {result['bonuses_earned']}"
+        + (f"\n🎁 Также сработала реферальная программа (+{result['referred_bonus']} пациенту, "
+           f"+{result['referrer_bonus']} пригласившему)" if result["referral_applied"] else "")
     )
+
+    total_bonus_text = result["bonuses_earned"]
+    if result["referral_applied"]:
+        total_bonus_text = f"{result['bonuses_earned']} + {result['referred_bonus']} за приглашение друга"
 
     await bot.send_message(
         a["patient_telegram_id"],
         f"Спасибо за визит! 🦷\n\n"
         f"💰 Оплачено: {price_str} сум\n"
-        f"🎁 Начислено бонусов: +{bonuses}\n\n"
+        f"🎁 Начислено бонусов: {total_bonus_text}\n\n"
         f"Проверить баланс можно в разделе «Мой уровень».",
     )
+
+    if result["referral_applied"] and result["referrer_telegram_id"]:
+        await bot.send_message(
+            result["referrer_telegram_id"],
+            f"🎉 Ваш друг посетил клинику впервые!\n"
+            f"Вам начислено {result['referrer_bonus']} бонусов за приглашение.",
+        )

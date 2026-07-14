@@ -13,8 +13,10 @@ import config
 from database.pool import init_pool, close_pool, get_pool
 from services.slot_generator import generate_slots_for_all_doctors, setup_scheduler_jobs
 
-from bot_handlers import start, booking
+from bot_handlers import start, booking, referral
 from bot_handlers.admin import appointments as admin_appointments
+from api.middleware import telegram_auth_middleware
+from api.routes import booking as api_booking
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,6 +26,7 @@ def create_dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(start.router)
     dp.include_router(booking.router)
+    dp.include_router(referral.router)
     dp.include_router(admin_appointments.router)
     return dp
 
@@ -61,17 +64,15 @@ def main():
 
     if config.WEBHOOK_BASE_URL:
         # ---------- Продакшн: webhook + aiohttp (нужен для Render и для будущего Mini App API) ----------
-        app = web.Application()
+        app = web.Application(middlewares=[telegram_auth_middleware])
 
         SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=config.WEBHOOK_PATH)
         setup_application(app, dp, bot=bot)
 
-        # сюда позже добавим API-роуты для Mini App:
-        # from api.routes import booking as api_booking
-        # app.add_routes(api_booking.routes)
+        app.add_routes(api_booking.routes)
 
-        # сюда позже добавим раздачу статики собранного Mini App:
-        # app.router.add_static("/webapp", path="webapp/dist")
+        # раздача собранного Mini App (webapp/dist после `npm run build`)
+        app.router.add_static("/webapp", path="webapp/dist")
 
         web.run_app(app, host="0.0.0.0", port=int(__import__("os").environ.get("PORT", 8080)))
     else:
