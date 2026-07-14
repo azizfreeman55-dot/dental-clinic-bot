@@ -10,6 +10,7 @@ from database.queries.admin import (
 from database.queries.appointments import confirm_appointment, cancel_appointment, propose_reschedule, get_free_slots
 from database.queries.doctors import get_available_dates, shift_label
 from database.queries.achievements import check_and_award_achievements
+from database.queries.missions import check_and_award_missions
 
 routes = web.RouteTableDef()
 
@@ -311,6 +312,25 @@ async def admin_complete(request: web.Request):
                 await bot.send_message(
                     result["referrer_telegram_id"],
                     f"🏆 Новое достижение: {ach['icon']} «{ach['name']}»!\n{ach['description']}",
+                )
+
+    new_missions = await check_and_award_missions(pool, a["patient_pk"])
+    for mis in new_missions:
+        await bot.send_message(
+            a["patient_telegram_id"],
+            f"🎯 Миссия выполнена: «{mis['name']}»!\nНачислено {mis['reward_bonus']} бонусов.",
+        )
+
+    if result["referral_applied"] and result["referrer_telegram_id"]:
+        referrer_row_for_missions = await pool.fetchrow(
+            "SELECT id FROM patients WHERE telegram_id = $1", result["referrer_telegram_id"]
+        )
+        if referrer_row_for_missions:
+            referrer_new_missions = await check_and_award_missions(pool, referrer_row_for_missions["id"])
+            for mis in referrer_new_missions:
+                await bot.send_message(
+                    result["referrer_telegram_id"],
+                    f"🎯 Миссия выполнена: «{mis['name']}»!\nНачислено {mis['reward_bonus']} бонусов.",
                 )
 
     return web.json_response({"ok": True, **result})

@@ -69,6 +69,9 @@ export const api = {
 
   // Achievements
   getAchievements: () => request('/api/achievements'),
+
+  // Missions
+  getMissions: () => request('/api/missions'),
 };
 
 export { tg };

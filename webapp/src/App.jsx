@@ -30,6 +30,7 @@ export default function App() {
       {screen === 'gifts' && <Gifts onBack={() => setScreen('home')} />}
       {screen === 'wheel' && <Wheel onBack={() => setScreen('home')} />}
       {screen === 'achievements' && <Achievements onBack={() => setScreen('home')} />}
+      {screen === 'missions' && <Missions onBack={() => setScreen('home')} />}
       {screen === 'admin' && <AdminPanel onBack={() => setScreen('home')} />}
     </div>
   )
@@ -74,6 +75,10 @@ function Home({ onNavigate }) {
       </button>
       <button className="list-item" onClick={() => onNavigate('achievements')}>
         <span>🏆 Достижения</span>
+        <span>›</span>
+      </button>
+      <button className="list-item" onClick={() => onNavigate('missions')}>
+        <span>🎯 Миссии месяца</span>
         <span>›</span>
       </button>
       <button className="list-item" onClick={() => onNavigate('referral')}>
@@ -483,6 +488,56 @@ function Achievements({ onBack }) {
           </div>
         </div>
       ))}
+
+      <button className="btn-secondary" onClick={onBack}>⬅️ На главную</button>
+    </div>
+  )
+}
+
+// ---------- Missions ----------
+
+function Missions({ onBack }) {
+  const [items, setItems] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    api.getMissions().then(setItems).catch((e) => setError(e.message))
+  }, [])
+
+  if (error) return <div className="error">{error}</div>
+  if (!items) return <div className="loading">Загрузка…</div>
+
+  return (
+    <div>
+      <div className="title">Миссии месяца</div>
+      <div className="subtitle">Выполняйте задания и получайте бонусы</div>
+
+      {items.length === 0 && <div className="empty">Пока нет активных миссий</div>}
+
+      {items.map((m) => {
+        const pct = Math.round((m.progress / m.target_count) * 100)
+        return (
+          <div key={m.id} className="card" style={{ opacity: m.completed ? 0.7 : 1 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontWeight: 700 }}>{m.completed ? '✅ ' : '🎯 '}{m.name}</div>
+              <span className="price">+{fmtMoney(m.reward_bonus)}</span>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '6px 0' }}>{m.description}</div>
+
+            <div style={{ background: 'var(--bg)', borderRadius: 8, height: 8, overflow: 'hidden', marginTop: 8 }}>
+              <div style={{
+                width: `${pct}%`, height: '100%',
+                background: m.completed ? 'var(--accent-lime)' : 'var(--accent)',
+                transition: 'width 0.3s',
+              }} />
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+              {m.progress} из {m.target_count}
+              {m.period === 'monthly' && !m.completed ? ' в этом месяце' : ''}
+            </div>
+          </div>
+        )
+      })}
 
       <button className="btn-secondary" onClick={onBack}>⬅️ На главную</button>
     </div>
