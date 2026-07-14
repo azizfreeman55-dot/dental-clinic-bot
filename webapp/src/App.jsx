@@ -354,19 +354,20 @@ function Wheel({ onBack }) {
 
           {prizes.map((p, i) => {
             const center = i * slice + slice / 2
+            const cssRotate = center - 90 // conic-gradient 0°=верх, CSS rotate(0)=локальная ось X вправо — компенсируем сдвиг
             return (
               <div
                 key={p.id}
                 style={{
                   position: 'absolute', top: '50%', left: '50%',
-                  transform: `rotate(${center}deg)`,
+                  transform: `rotate(${cssRotate}deg)`,
                   transformOrigin: '0 0',
                   width: radius,
                 }}
               >
                 <span style={{
                   position: 'absolute', left: radius - 60, top: -8,
-                  transform: `rotate(${-center}deg)`,
+                  transform: `rotate(${-cssRotate}deg)`,
                   fontSize: 12, fontWeight: 800, color: 'white', width: 65, textAlign: 'center',
                   textShadow: '0 1px 3px rgba(0,0,0,0.6)',
                   letterSpacing: 0.2,
