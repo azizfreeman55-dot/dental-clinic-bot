@@ -14,6 +14,10 @@ MINI_APP_URL = f"{WEBHOOK_BASE_URL}/webapp/" if WEBHOOK_BASE_URL else None
 # id группы/чата, куда падают уведомления о новых записях на подтверждение
 ADMIN_NOTIFY_CHAT_ID = os.getenv("ADMIN_NOTIFY_CHAT_ID")
 
+# telegram_id владельца — при каждом старте бота автоматически добавляется в таблицу admins,
+# если его там ещё нет. Узнать свой telegram_id можно у @userinfobot в Telegram.
+ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
+
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN не задан — проверь .env")
 if not DATABASE_URL:

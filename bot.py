@@ -11,6 +11,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import config
 from database.pool import init_pool, close_pool, get_pool
+from database.migrate import apply_migrations
+from database.queries.admin import ensure_admin
 from services.slot_generator import generate_slots_for_all_doctors, setup_scheduler_jobs
 
 from bot_handlers import start, booking, referral
@@ -33,6 +35,12 @@ def create_dispatcher() -> Dispatcher:
 
 async def on_startup(bot: Bot):
     pool = await init_pool(config.DATABASE_URL)
+
+    await apply_migrations(pool)
+
+    if config.ADMIN_TELEGRAM_ID:
+        await ensure_admin(pool, int(config.ADMIN_TELEGRAM_ID))
+        logger.info(f"Админ назначен: {config.ADMIN_TELEGRAM_ID}")
 
     # генерируем слоты сразу при старте, чтобы не ждать ночной джобы на первом деплое
     await generate_slots_for_all_doctors(pool)

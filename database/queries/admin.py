@@ -7,6 +7,21 @@ async def is_admin(pool: asyncpg.Pool, telegram_id: int) -> bool:
     return row is not None
 
 
+async def ensure_admin(pool: asyncpg.Pool, telegram_id: int, full_name: str = "Owner") -> None:
+    """
+    Вызывается при каждом старте бота, если задана переменная окружения ADMIN_TELEGRAM_ID.
+    Идемпотентно — если админ уже есть, ничего не делает.
+    """
+    await pool.execute(
+        """
+        INSERT INTO admins (telegram_id, full_name, role)
+        VALUES ($1, $2, 'owner')
+        ON CONFLICT (telegram_id) DO NOTHING
+        """,
+        telegram_id, full_name,
+    )
+
+
 async def get_pending_appointments(pool: asyncpg.Pool) -> list[asyncpg.Record]:
     return await pool.fetch(
         """
