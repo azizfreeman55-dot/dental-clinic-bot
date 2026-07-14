@@ -14,6 +14,7 @@ from database.pool import init_pool, close_pool, get_pool
 from services.slot_generator import generate_slots_for_all_doctors, setup_scheduler_jobs
 
 from bot_handlers import start, booking
+from bot_handlers.admin import appointments as admin_appointments
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ def create_dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(start.router)
     dp.include_router(booking.router)
+    dp.include_router(admin_appointments.router)
     return dp
 
 

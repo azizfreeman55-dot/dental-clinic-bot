@@ -1,0 +1,108 @@
+import asyncpg
+from typing import Optional
+
+
+async def is_admin(pool: asyncpg.Pool, telegram_id: int) -> bool:
+    row = await pool.fetchrow("SELECT 1 FROM admins WHERE telegram_id = $1", telegram_id)
+    return row is not None
+
+
+async def get_pending_appointments(pool: asyncpg.Pool) -> list[asyncpg.Record]:
+    return await pool.fetch(
+        """
+        SELECT a.id, a.created_at,
+               p.full_name AS patient_name, p.telegram_id AS patient_telegram_id,
+               d.full_name AS doctor_name,
+               s.name AS service_name, s.price,
+               ds.date, ds.start_time
+        FROM appointments a
+        JOIN patients p ON p.id = a.patient_id
+        JOIN doctors d ON d.id = a.doctor_id
+        JOIN services s ON s.id = a.service_id
+        JOIN doctor_slots ds ON ds.id = a.slot_id
+        WHERE a.status = 'pending'
+        ORDER BY ds.date, ds.start_time
+        """
+    )
+
+
+async def get_confirmed_upcoming_appointments(pool: asyncpg.Pool) -> list[asyncpg.Record]:
+    """Подтверждённые записи, которые ещё не отмечены как завершённые — кандидаты на 'приём состоялся'."""
+    return await pool.fetch(
+        """
+        SELECT a.id, p.full_name AS patient_name, p.telegram_id AS patient_telegram_id,
+               d.full_name AS doctor_name, s.name AS service_name, s.price,
+               ds.date, ds.start_time
+        FROM appointments a
+        JOIN patients p ON p.id = a.patient_id
+        JOIN doctors d ON d.id = a.doctor_id
+        JOIN services s ON s.id = a.service_id
+        JOIN doctor_slots ds ON ds.id = a.slot_id
+        WHERE a.status = 'confirmed'
+        ORDER BY ds.date, ds.start_time
+        """
+    )
+
+
+async def get_appointment_full(pool: asyncpg.Pool, appointment_id: int) -> Optional[asyncpg.Record]:
+    return await pool.fetchrow(
+        """
+        SELECT a.id, a.status, a.patient_id, a.doctor_id,
+               p.full_name AS patient_name, p.telegram_id AS patient_telegram_id,
+               p.id AS patient_pk, l.bonus_percent,
+               d.full_name AS doctor_name,
+               s.name AS service_name, s.price,
+               ds.date, ds.start_time
+        FROM appointments a
+        JOIN patients p ON p.id = a.patient_id
+        JOIN loyalty_levels l ON l.id = p.level_id
+        JOIN doctors d ON d.id = a.doctor_id
+        JOIN services s ON s.id = a.service_id
+        JOIN doctor_slots ds ON ds.id = a.slot_id
+        WHERE a.id = $1
+        """,
+        appointment_id,
+    )
+
+
+async def complete_appointment_with_bonus(
+    pool: asyncpg.Pool,
+    appointment_id: int,
+    patient_id: int,
+    doctor_id: int,
+    amount_paid: float,
+    bonus_percent: float,
+) -> int:
+    """
+    Отмечает визит завершённым, пишет в treatment_history и начисляет бонусы
+    через bonus_transactions (триггер в БД сам обновит баланс и уровень пациента).
+    Возвращает количество начисленных бонусов.
+    """
+    bonuses_earned = round(amount_paid * float(bonus_percent) / 100)
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE appointments SET status = 'completed', updated_at = now() WHERE id = $1",
+                appointment_id,
+            )
+            await conn.execute(
+                """
+                INSERT INTO treatment_history (appointment_id, patient_id, doctor_id, amount_paid, bonuses_earned)
+                VALUES ($1, $2, $3, $4, $5)
+                """,
+                appointment_id, patient_id, doctor_id, amount_paid, bonuses_earned,
+            )
+            await conn.execute(
+                """
+                INSERT INTO bonus_transactions (patient_id, amount, type, description, related_id)
+                VALUES ($1, $2, 'earn_visit', 'Начисление за визит', $3)
+                """,
+                patient_id, bonuses_earned, appointment_id,
+            )
+            await conn.execute(
+                "UPDATE patients SET total_visits = total_visits + 1 WHERE id = $1",
+                patient_id,
+            )
+
+    return bonuses_earned

@@ -7,3 +7,7 @@ class BookingStates(StatesGroup):
     choosing_date = State()
     choosing_slot = State()
     confirming = State()
+
+
+class AdminStates(StatesGroup):
+    entering_amount_paid = State()
