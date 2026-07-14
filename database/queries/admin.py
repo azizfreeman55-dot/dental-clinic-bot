@@ -2,6 +2,33 @@ import asyncpg
 from typing import Optional
 
 
+async def is_owner(pool: asyncpg.Pool, telegram_id: int) -> bool:
+    row = await pool.fetchrow("SELECT 1 FROM admins WHERE telegram_id = $1 AND role = 'owner'", telegram_id)
+    return row is not None
+
+
+async def add_admin(pool: asyncpg.Pool, telegram_id: int, full_name: str, role: str = "manager") -> bool:
+    """Возвращает False, если такой telegram_id уже есть в admins."""
+    result = await pool.execute(
+        """
+        INSERT INTO admins (telegram_id, full_name, role)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (telegram_id) DO NOTHING
+        """,
+        telegram_id, full_name, role,
+    )
+    return result.endswith("1")
+
+
+async def list_admins(pool: asyncpg.Pool) -> list[asyncpg.Record]:
+    return await pool.fetch("SELECT telegram_id, full_name, role, created_at FROM admins ORDER BY created_at")
+
+
+async def remove_admin(pool: asyncpg.Pool, telegram_id: int) -> bool:
+    result = await pool.execute("DELETE FROM admins WHERE telegram_id = $1 AND role != 'owner'", telegram_id)
+    return result.endswith("1")
+
+
 async def is_admin(pool: asyncpg.Pool, telegram_id: int) -> bool:
     row = await pool.fetchrow("SELECT 1 FROM admins WHERE telegram_id = $1", telegram_id)
     return row is not None

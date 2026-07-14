@@ -72,6 +72,9 @@ export const api = {
 
   // Missions
   getMissions: () => request('/api/missions'),
+
+  // Profile
+  updateProfile: (data) => request('/api/profile', { method: 'PUT', body: JSON.stringify(data) }),
 };
 
 export { tg };

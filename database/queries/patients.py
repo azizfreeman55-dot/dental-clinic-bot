@@ -68,3 +68,26 @@ async def get_patient_level_info(pool: asyncpg.Pool, patient_id: int) -> asyncpg
         """,
         patient_id,
     )
+
+
+async def update_patient_profile(
+    pool: asyncpg.Pool,
+    patient_id: int,
+    full_name: Optional[str] = None,
+    phone: Optional[str] = None,
+    birth_date: Optional[str] = None,
+    gender: Optional[str] = None,
+) -> asyncpg.Record:
+    """Обновляет только переданные поля (None — не трогаем текущее значение)."""
+    return await pool.fetchrow(
+        """
+        UPDATE patients SET
+            full_name  = COALESCE($2, full_name),
+            phone      = COALESCE($3, phone),
+            birth_date = COALESCE($4::date, birth_date),
+            gender     = COALESCE($5, gender)
+        WHERE id = $1
+        RETURNING *
+        """,
+        patient_id, full_name, phone, birth_date, gender,
+    )

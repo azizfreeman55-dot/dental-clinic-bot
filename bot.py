@@ -18,6 +18,7 @@ from services.reminders import send_reminders
 
 from bot_handlers import start, booking, referral, profile, patient_actions
 from bot_handlers.admin import appointments as admin_appointments
+from bot_handlers.admin import manage_admins as admin_manage_admins
 from api.middleware import telegram_auth_middleware
 from api.routes import booking as api_booking
 from api.routes import admin as api_admin
@@ -38,6 +39,7 @@ def create_dispatcher() -> Dispatcher:
     dp.include_router(profile.router)
     dp.include_router(patient_actions.router)
     dp.include_router(admin_appointments.router)
+    dp.include_router(admin_manage_admins.router)
     return dp
 
 

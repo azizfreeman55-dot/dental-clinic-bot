@@ -3,7 +3,7 @@ from datetime import date as date_cls
 import json
 
 from database.pool import get_pool
-from database.queries.patients import get_or_create_patient, get_patient_level_info
+from database.queries.patients import get_or_create_patient, get_patient_level_info, update_patient_profile
 from database.queries.doctors import get_active_services, get_doctors_for_service, get_available_dates
 from database.queries.appointments import get_free_slots, book_slot
 from database.queries.referrals import get_referral_stats, REFERRER_BONUS_DEFAULT, REFERRED_BONUS_DEFAULT
@@ -34,6 +34,9 @@ async def get_me(request: web.Request):
     return web.json_response({
         "id": patient["id"],
         "full_name": patient["full_name"],
+        "phone": patient["phone"],
+        "birth_date": patient["birth_date"].isoformat() if patient["birth_date"] else None,
+        "gender": patient["gender"],
         "bonus_balance": patient["bonus_balance"],
         "level_name": level_info["level_name"],
         "bonus_percent": float(level_info["bonus_percent"]),
@@ -41,6 +44,38 @@ async def get_me(request: web.Request):
         "lifetime_bonus_earned": level_info["lifetime_bonus_earned"],
         "benefits": benefits,
         "is_admin": admin_flag,
+        "profile_complete": bool(patient["phone"] and patient["birth_date"] and patient["gender"]),
+    })
+
+
+@routes.put("/api/profile")
+async def update_profile(request: web.Request):
+    pool = get_pool()
+    telegram_id = request["telegram_id"]
+    body = await request.json()
+
+    patient, _ = await get_or_create_patient(
+        pool, telegram_id=telegram_id, full_name=request["telegram_user"].get("first_name", "Пациент")
+    )
+
+    full_name = (body.get("full_name") or "").strip() or None
+    phone = (body.get("phone") or "").strip() or None
+    birth_date = (body.get("birth_date") or "").strip() or None
+    gender = body.get("gender") or None
+
+    if gender is not None and gender not in ("male", "female"):
+        return web.json_response({"error": "gender должен быть 'male' или 'female'"}, status=400)
+
+    updated = await update_patient_profile(
+        pool, patient["id"],
+        full_name=full_name, phone=phone, birth_date=birth_date, gender=gender,
+    )
+
+    return web.json_response({
+        "full_name": updated["full_name"],
+        "phone": updated["phone"],
+        "birth_date": updated["birth_date"].isoformat() if updated["birth_date"] else None,
+        "gender": updated["gender"],
     })
 
 

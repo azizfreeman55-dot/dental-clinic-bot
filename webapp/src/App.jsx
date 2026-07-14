@@ -25,6 +25,7 @@ export default function App() {
     <div className="screen">
       {screen === 'home' && <Home onNavigate={setScreen} />}
       {screen === 'booking' && <Booking onBack={() => setScreen('home')} />}
+      {screen === 'profile' && <Profile onBack={() => setScreen('home')} />}
       {screen === 'referral' && <Referral onBack={() => setScreen('home')} />}
       {screen === 'level' && <Level onBack={() => setScreen('home')} />}
       {screen === 'gifts' && <Gifts onBack={() => setScreen('home')} />}
@@ -59,6 +60,10 @@ function Home({ onNavigate }) {
 
       <button className="list-item" onClick={() => onNavigate('booking')}>
         <span>📅 Записаться на приём</span>
+        <span>›</span>
+      </button>
+      <button className="list-item" onClick={() => onNavigate('profile')}>
+        <span>👤 Мой профиль{!me.profile_complete ? ' ⚠️' : ''}</span>
         <span>›</span>
       </button>
       <button className="list-item" onClick={() => onNavigate('level')}>
@@ -97,6 +102,120 @@ function Home({ onNavigate }) {
 }
 
 // ---------- Booking ----------
+
+// ---------- Profile ----------
+
+function Profile({ onBack }) {
+  const [me, setMe] = useState(null)
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  const [fullName, setFullName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [birthDate, setBirthDate] = useState('')
+  const [gender, setGender] = useState('')
+
+  useEffect(() => {
+    api.getMe().then((data) => {
+      setMe(data)
+      setFullName(data.full_name || '')
+      setPhone(data.phone || '')
+      setBirthDate(data.birth_date || '')
+      setGender(data.gender || '')
+    }).catch((e) => setError(e.message))
+  }, [])
+
+  async function handleSave() {
+    setSaving(true)
+    setError(null)
+    setSaved(false)
+    try {
+      await api.updateProfile({
+        full_name: fullName,
+        phone,
+        birth_date: birthDate,
+        gender,
+      })
+      setSaved(true)
+      tg?.HapticFeedback?.notificationOccurred('success')
+      setTimeout(() => setSaved(false), 2500)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (error && !me) return <div className="error">{error}</div>
+  if (!me) return <div className="loading">Загрузка…</div>
+
+  const inputStyle = {
+    width: '100%', padding: 12, borderRadius: 10, border: '1px solid var(--border)',
+    background: 'var(--bg-card)', color: 'var(--text-primary)', marginBottom: 12, fontSize: 15,
+  }
+
+  return (
+    <div>
+      <div className="title">Мой профиль</div>
+      <div className="subtitle">Эти данные помогают клинике связаться с вами и поздравить с днём рождения 🎂</div>
+
+      <div className="card">
+        <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>ФИО</label>
+        <input
+          style={inputStyle}
+          type="text"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          placeholder="Иванов Иван Иванович"
+        />
+
+        <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Телефон</label>
+        <input
+          style={inputStyle}
+          type="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="+998 90 123 45 67"
+        />
+
+        <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Дата рождения</label>
+        <input
+          style={inputStyle}
+          type="date"
+          value={birthDate}
+          onChange={(e) => setBirthDate(e.target.value)}
+        />
+
+        <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Пол</label>
+        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: 4 }}>
+          <div
+            className="chip"
+            onClick={() => setGender('male')}
+            style={gender === 'male' ? { background: 'var(--accent)', color: 'white' } : {}}
+          >
+            👨 Мужской
+          </div>
+          <div
+            className="chip"
+            onClick={() => setGender('female')}
+            style={gender === 'female' ? { background: 'var(--accent)', color: 'white' } : {}}
+          >
+            👩 Женский
+          </div>
+        </div>
+      </div>
+
+      {error && <div className="error">{error}</div>}
+      {saved && <div className="card" style={{ borderColor: 'var(--accent-lime)', textAlign: 'center' }}>✓ Сохранено</div>}
+
+      <button className="btn-primary" disabled={saving} onClick={handleSave}>
+        {saving ? 'Сохраняем…' : 'Сохранить'}
+      </button>
+      <button className="btn-secondary" onClick={onBack}>⬅️ На главную</button>
+    </div>
+  )
+}
 
 function Booking({ onBack }) {
   const [step, setStep] = useState('service') // service -> doctor -> date -> slot -> confirm -> done
