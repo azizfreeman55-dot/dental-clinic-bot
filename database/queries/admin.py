@@ -27,6 +27,73 @@ async def ensure_admin(pool: asyncpg.Pool, telegram_id: int, full_name: str = "O
     )
 
 
+async def get_admin_stats(pool: asyncpg.Pool) -> asyncpg.Record:
+    return await pool.fetchrow(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM appointments WHERE status = 'pending') AS pending_count,
+            (SELECT COUNT(*) FROM appointments WHERE status = 'confirmed') AS confirmed_count,
+            (SELECT COUNT(*) FROM appointments WHERE status = 'awaiting_reschedule') AS awaiting_reschedule_count,
+            (SELECT COUNT(*) FROM appointments WHERE status = 'completed' AND updated_at::date = CURRENT_DATE) AS completed_today,
+            (SELECT COUNT(*) FROM appointments WHERE status = 'completed'
+                AND date_trunc('month', updated_at) = date_trunc('month', CURRENT_DATE)) AS completed_this_month,
+            (SELECT COALESCE(SUM(amount_paid), 0) FROM treatment_history
+                WHERE date_trunc('month', created_at) = date_trunc('month', CURRENT_DATE)) AS revenue_this_month,
+            (SELECT COUNT(*) FROM patients) AS total_patients,
+            (SELECT COUNT(*) FROM patients WHERE created_at::date = CURRENT_DATE) AS new_patients_today
+        """
+    )
+
+
+async def get_appointments_by_status(pool: asyncpg.Pool, status: str, limit: int = 100) -> list[asyncpg.Record]:
+    valid_statuses = {"pending", "confirmed", "completed", "cancelled_by_patient", "cancelled_by_admin", "awaiting_reschedule"}
+    if status not in valid_statuses:
+        return []
+
+    order = "ds.date ASC, ds.start_time ASC" if status in ("pending", "confirmed", "awaiting_reschedule") else "a.updated_at DESC"
+
+    return await pool.fetch(
+        f"""
+        SELECT a.id, a.status, a.created_at, a.updated_at,
+               p.full_name AS patient_name, p.telegram_id AS patient_telegram_id, p.phone,
+               d.full_name AS doctor_name,
+               s.name AS service_name, s.price,
+               ds.date, ds.start_time
+        FROM appointments a
+        JOIN patients p ON p.id = a.patient_id
+        JOIN doctors d ON d.id = a.doctor_id
+        JOIN services s ON s.id = a.service_id
+        JOIN doctor_slots ds ON ds.id = a.slot_id
+        WHERE a.status = $1
+        ORDER BY {order}
+        LIMIT $2
+        """,
+        status, limit,
+    )
+
+
+async def get_appointments_for_date(pool: asyncpg.Pool, target_date) -> list[asyncpg.Record]:
+    """Все записи на конкретную дату, по всем врачам — для календаря в админке."""
+    return await pool.fetch(
+        """
+        SELECT a.id, a.status,
+               p.full_name AS patient_name, p.telegram_id AS patient_telegram_id, p.phone,
+               d.full_name AS doctor_name, d.id AS doctor_id,
+               s.name AS service_name, s.price,
+               ds.start_time
+        FROM appointments a
+        JOIN patients p ON p.id = a.patient_id
+        JOIN doctors d ON d.id = a.doctor_id
+        JOIN services s ON s.id = a.service_id
+        JOIN doctor_slots ds ON ds.id = a.slot_id
+        WHERE ds.date = $1
+          AND a.status IN ('pending', 'confirmed', 'completed', 'awaiting_reschedule')
+        ORDER BY d.full_name, ds.start_time
+        """,
+        target_date,
+    )
+
+
 async def get_pending_appointments(pool: asyncpg.Pool) -> list[asyncpg.Record]:
     return await pool.fetch(
         """

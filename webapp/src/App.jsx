@@ -28,6 +28,7 @@ export default function App() {
       {screen === 'referral' && <Referral onBack={() => setScreen('home')} />}
       {screen === 'level' && <Level onBack={() => setScreen('home')} />}
       {screen === 'gifts' && <Gifts onBack={() => setScreen('home')} />}
+      {screen === 'admin' && <AdminPanel onBack={() => setScreen('home')} />}
     </div>
   )
 }
@@ -69,6 +70,13 @@ function Home({ onNavigate }) {
         <span>👥 Пригласить друга</span>
         <span>›</span>
       </button>
+
+      {me.is_admin && (
+        <button className="list-item" onClick={() => onNavigate('admin')} style={{ marginTop: 16, borderColor: 'var(--accent)' }}>
+          <span>🛠 Админ-панель</span>
+          <span>›</span>
+        </button>
+      )}
     </div>
   )
 }
@@ -247,7 +255,304 @@ function List({ items, render, onSelect, onBack }) {
   )
 }
 
-// ---------- Referral ----------
+// ---------- Admin Panel ----------
+
+const STATUS_LABELS = {
+  pending: 'Ожидает подтверждения',
+  confirmed: 'Подтверждена',
+  completed: 'Завершена',
+  cancelled_by_patient: 'Отменена пациентом',
+  cancelled_by_admin: 'Отклонена админом',
+  awaiting_reschedule: 'Ждём ответ на перенос',
+}
+
+function AdminPanel({ onBack }) {
+  const [view, setView] = useState('home') // home -> list -> detail, or calendar
+  const [status, setStatus] = useState('pending')
+  const [selectedId, setSelectedId] = useState(null)
+
+  return (
+    <div>
+      {view === 'home' && (
+        <AdminHome
+          onBack={onBack}
+          onOpenList={(s) => { setStatus(s); setView('list') }}
+          onOpenCalendar={() => setView('calendar')}
+        />
+      )}
+      {view === 'list' && (
+        <AdminList
+          status={status}
+          onChangeStatus={setStatus}
+          onOpen={(id) => { setSelectedId(id); setView('detail') }}
+          onBack={() => setView('home')}
+        />
+      )}
+      {view === 'detail' && (
+        <AdminDetail
+          id={selectedId}
+          onBack={() => setView('list')}
+          onDone={() => setView('list')}
+        />
+      )}
+      {view === 'calendar' && (
+        <AdminCalendar onBack={() => setView('home')} onOpen={(id) => { setSelectedId(id); setView('detail') }} />
+      )}
+    </div>
+  )
+}
+
+function AdminHome({ onBack, onOpenList, onOpenCalendar }) {
+  const [stats, setStats] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    api.adminStats().then(setStats).catch((e) => setError(e.message))
+  }, [])
+
+  if (error) return <div className="error">{error}</div>
+  if (!stats) return <div className="loading">Загрузка…</div>
+
+  return (
+    <div>
+      <div className="title">🛠 Админ-панель</div>
+
+      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        <div className="card" onClick={() => onOpenList('pending')} style={{ cursor: 'pointer' }}>
+          <div className="subtitle">Ожидают подтверждения</div>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>{stats.pending_count}</div>
+        </div>
+        <div className="card" onClick={() => onOpenList('confirmed')} style={{ cursor: 'pointer' }}>
+          <div className="subtitle">Подтверждено</div>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>{stats.confirmed_count}</div>
+        </div>
+        <div className="card">
+          <div className="subtitle">Завершено сегодня</div>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>{stats.completed_today}</div>
+        </div>
+        <div className="card">
+          <div className="subtitle">Завершено за месяц</div>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>{stats.completed_this_month}</div>
+        </div>
+      </div>
+
+      <div className="balance-hero">
+        <div className="label">Выручка за месяц</div>
+        <div className="amount">{fmtMoney(stats.revenue_this_month)} сум</div>
+      </div>
+
+      <div className="card">
+        <div>👥 Всего пациентов: {stats.total_patients}</div>
+        <div>🆕 Новых сегодня: {stats.new_patients_today}</div>
+        {stats.awaiting_reschedule_count > 0 && (
+          <div>🔄 Ждут ответа на перенос: {stats.awaiting_reschedule_count}</div>
+        )}
+      </div>
+
+      <button className="list-item" onClick={() => onOpenList('pending')}>
+        <span>📋 Заявки на подтверждение</span><span>›</span>
+      </button>
+      <button className="list-item" onClick={() => onOpenList('confirmed')}>
+        <span>✅ Подтверждённые записи</span><span>›</span>
+      </button>
+      <button className="list-item" onClick={() => onOpenList('completed')}>
+        <span>🗂 История завершённых</span><span>›</span>
+      </button>
+      <button className="list-item" onClick={onOpenCalendar}>
+        <span>📅 Календарь по дням</span><span>›</span>
+      </button>
+
+      <button className="btn-secondary" onClick={onBack}>⬅️ На главную</button>
+    </div>
+  )
+}
+
+function AdminList({ status, onChangeStatus, onOpen, onBack }) {
+  const [items, setItems] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    setItems(null)
+    api.adminAppointments(status).then(setItems).catch((e) => setError(e.message))
+  }, [status])
+
+  const tabs = [
+    ['pending', 'Ожидают'],
+    ['confirmed', 'Подтв.'],
+    ['completed', 'Завершены'],
+    ['cancelled_by_admin', 'Отклонены'],
+  ]
+
+  return (
+    <div>
+      <div className="title">Заявки</div>
+
+      <div className="grid cols-4" style={{ marginBottom: 12 }}>
+        {tabs.map(([key, label]) => (
+          <div
+            key={key}
+            className="chip"
+            onClick={() => onChangeStatus(key)}
+            style={status === key ? { background: 'var(--accent)', color: 'white' } : {}}
+          >
+            {label}
+          </div>
+        ))}
+      </div>
+
+      {error && <div className="error">{error}</div>}
+      {!items && !error && <div className="loading">Загрузка…</div>}
+      {items && items.length === 0 && <div className="empty">Пусто</div>}
+
+      {items && items.map((a) => (
+        <button key={a.id} className="list-item" onClick={() => onOpen(a.id)}>
+          <span>
+            {a.patient_name}<br />
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{a.service_name} · {a.doctor_name}</span>
+          </span>
+          <span className="price">{a.formatted}</span>
+        </button>
+      ))}
+
+      <button className="btn-secondary" onClick={onBack}>⬅️ Назад</button>
+    </div>
+  )
+}
+
+function AdminDetail({ id, onBack, onDone }) {
+  const [a, setA] = useState(null)
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [showAmountInput, setShowAmountInput] = useState(false)
+  const [amount, setAmount] = useState('')
+
+  function load() {
+    api.adminAppointmentDetail(id).then(setA).catch((e) => setError(e.message))
+  }
+
+  useEffect(() => { load() }, [id])
+
+  if (error) return <div className="error">{error}</div>
+  if (!a) return <div className="loading">Загрузка…</div>
+
+  async function handleConfirm() {
+    setBusy(true)
+    try { await api.adminConfirm(id); onDone() } catch (e) { setError(e.message) } finally { setBusy(false) }
+  }
+
+  async function handleDecline() {
+    setBusy(true)
+    try { await api.adminDecline(id); onDone() } catch (e) { setError(e.message) } finally { setBusy(false) }
+  }
+
+  async function handleComplete() {
+    if (!amount || isNaN(Number(amount))) return
+    setBusy(true)
+    try { await api.adminComplete(id, Number(amount)); onDone() } catch (e) { setError(e.message) } finally { setBusy(false) }
+  }
+
+  return (
+    <div>
+      <div className="title">Заявка №{a.id}</div>
+      <div className="subtitle">{STATUS_LABELS[a.status] || a.status}</div>
+
+      <div className="card">
+        <div className="subtitle">Клиент</div>
+        <div><b>{a.patient_name}</b></div>
+        {a.phone && <div>📱 {a.phone}</div>}
+        <div>⭐ {a.level_name} ({a.bonus_percent}% с визита)</div>
+        <div>💰 Баланс: {fmtMoney(a.bonus_balance)}</div>
+        <div>Завершённых визитов: {a.completed_visits_count}{a.completed_visits_count === 0 ? ' (первый визит)' : ''}</div>
+        {a.referral_status === 'pending' && <div>🔗 Пришёл по реферальной ссылке</div>}
+      </div>
+
+      <div className="card">
+        <div className="subtitle">Врач</div>
+        <div>{a.doctor_name} — {a.doctor_specialization}</div>
+        <div>{a.doctor_shift}</div>
+      </div>
+
+      <div className="card">
+        <div className="subtitle">Услуга</div>
+        <div>{a.service_name} — {fmtMoney(a.price)} сум</div>
+        {a.service_description && <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{a.service_description}</div>}
+      </div>
+
+      <div className="card">
+        <div>📅 {a.formatted}</div>
+      </div>
+
+      {error && <div className="error">{error}</div>}
+
+      {a.status === 'pending' && (
+        <>
+          <button className="btn-primary" disabled={busy} onClick={handleConfirm}>✅ Подтвердить</button>
+          <button className="btn-secondary" disabled={busy} onClick={handleDecline}>❌ Отклонить</button>
+        </>
+      )}
+
+      {a.status === 'confirmed' && !showAmountInput && (
+        <button className="btn-primary" disabled={busy} onClick={() => setShowAmountInput(true)}>✅ Визит состоялся</button>
+      )}
+
+      {a.status === 'confirmed' && showAmountInput && (
+        <div className="card">
+          <div className="subtitle">Сумма оплаты (сум)</div>
+          <input
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="350000"
+            style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-primary)', marginBottom: 8 }}
+          />
+          <button className="btn-primary" disabled={busy} onClick={handleComplete}>Подтвердить оплату и начислить бонусы</button>
+        </div>
+      )}
+
+      <button className="btn-secondary" onClick={onBack}>⬅️ К списку</button>
+    </div>
+  )
+}
+
+function AdminCalendar({ onBack, onOpen }) {
+  const todayISO = new Date().toISOString().slice(0, 10)
+  const [date, setDate] = useState(todayISO)
+  const [items, setItems] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    setItems(null)
+    api.adminCalendar(date).then(setItems).catch((e) => setError(e.message))
+  }, [date])
+
+  return (
+    <div>
+      <div className="title">Календарь</div>
+      <input
+        type="date"
+        value={date}
+        onChange={(e) => setDate(e.target.value)}
+        style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', marginBottom: 12 }}
+      />
+
+      {error && <div className="error">{error}</div>}
+      {!items && !error && <div className="loading">Загрузка…</div>}
+      {items && items.length === 0 && <div className="empty">На эту дату записей нет</div>}
+
+      {items && items.map((a) => (
+        <button key={a.id} className="list-item" onClick={() => onOpen(a.id)}>
+          <span>
+            {a.start_time} · {a.doctor_name}<br />
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{a.patient_name} — {a.service_name}</span>
+          </span>
+          <span className="price">{STATUS_LABELS[a.status] || a.status}</span>
+        </button>
+      ))}
+
+      <button className="btn-secondary" onClick={onBack}>⬅️ Назад</button>
+    </div>
+  )
+}
 
 function Referral({ onBack }) {
   const [data, setData] = useState(null)

@@ -16,6 +16,8 @@ routes = web.RouteTableDef()
 
 @routes.get("/api/me")
 async def get_me(request: web.Request):
+    from database.queries.admin import is_admin
+
     pool = get_pool()
     telegram_id = request["telegram_id"]
     user = request["telegram_user"]
@@ -24,6 +26,7 @@ async def get_me(request: web.Request):
         pool, telegram_id=telegram_id, full_name=user.get("first_name", "Пациент")
     )
     level_info = await get_patient_level_info(pool, patient["id"])
+    admin_flag = await is_admin(pool, telegram_id)
 
     benefits_raw = level_info["benefits"]
     benefits = json.loads(benefits_raw) if isinstance(benefits_raw, str) else (benefits_raw or [])
@@ -37,6 +40,7 @@ async def get_me(request: web.Request):
         "next_level_threshold": level_info["next_level_threshold"],
         "lifetime_bonus_earned": level_info["lifetime_bonus_earned"],
         "benefits": benefits,
+        "is_admin": admin_flag,
     })
 
 
