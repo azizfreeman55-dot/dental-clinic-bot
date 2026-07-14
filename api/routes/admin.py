@@ -7,7 +7,8 @@ from database.queries.admin import (
     get_appointment_full, complete_appointment_with_bonus,
     get_pending_redemptions, mark_redemption_used,
 )
-from database.queries.appointments import confirm_appointment, cancel_appointment
+from database.queries.appointments import confirm_appointment, cancel_appointment, propose_reschedule, get_free_slots
+from database.queries.doctors import get_available_dates, shift_label
 
 routes = web.RouteTableDef()
 
@@ -79,8 +80,6 @@ async def admin_appointments_list(request: web.Request):
 
 @routes.get("/api/admin/appointments/{id}")
 async def admin_appointment_detail(request: web.Request):
-    from database.queries.doctors import shift_label
-
     pool = await _check_admin(request)
     if pool is None:
         return web.json_response({"error": "forbidden"}, status=403)
@@ -158,6 +157,97 @@ async def admin_decline(request: web.Request):
     )
 
     return web.json_response({"ok": True})
+
+
+# ---------- Перенос времени: даты / слоты / отправка предложения ----------
+
+@routes.get("/api/admin/appointments/{id}/reschedule_dates")
+async def admin_reschedule_dates(request: web.Request):
+    pool = await _check_admin(request)
+    if pool is None:
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    appointment_id = int(request.match_info["id"])
+    a = await get_appointment_full(pool, appointment_id)
+    if a is None:
+        return web.json_response({"error": "not_found"}, status=404)
+
+    dates = await get_available_dates(pool, a["doctor_id"])
+    return web.json_response([d.isoformat() for d in dates])
+
+
+@routes.get("/api/admin/appointments/{id}/reschedule_slots")
+async def admin_reschedule_slots(request: web.Request):
+    pool = await _check_admin(request)
+    if pool is None:
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    appointment_id = int(request.match_info["id"])
+    date_str = request.query.get("date")
+    if not date_str:
+        return web.json_response({"error": "date обязателен"}, status=400)
+
+    a = await get_appointment_full(pool, appointment_id)
+    if a is None:
+        return web.json_response({"error": "not_found"}, status=404)
+
+    slots = await get_free_slots(pool, a["doctor_id"], date_cls.fromisoformat(date_str))
+    return web.json_response([
+        {"id": s["id"], "start_time": s["start_time"].strftime("%H:%M")}
+        for s in slots
+    ])
+
+
+@routes.post("/api/admin/appointments/{id}/reschedule")
+async def admin_reschedule(request: web.Request):
+    pool = await _check_admin(request)
+    if pool is None:
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    appointment_id = int(request.match_info["id"])
+    body = await request.json()
+    new_slot_id = body.get("slot_id")
+    if not new_slot_id:
+        return web.json_response({"error": "slot_id обязателен"}, status=400)
+
+    a = await get_appointment_full(pool, appointment_id)
+    if a is None:
+        return web.json_response({"error": "not_found"}, status=404)
+
+    new_appointment_id = await propose_reschedule(
+        pool,
+        old_appointment_id=appointment_id,
+        patient_id=a["patient_pk"],
+        doctor_id=a["doctor_id"],
+        service_id=a["service_id"],
+        new_slot_id=new_slot_id,
+    )
+
+    if new_appointment_id is None:
+        return web.json_response({"error": "slot_taken", "message": "Этот слот уже заняли"}, status=409)
+
+    new_a = await get_appointment_full(pool, new_appointment_id)
+
+    bot = request.app["bot"]
+    await bot.send_message(
+        new_a["patient_telegram_id"],
+        f"К сожалению, ваше время на {_fmt_dt(a['date'], a['start_time'])} было занято.\n\n"
+        f"Но у нас есть свободное время: <b>{_fmt_dt(new_a['date'], new_a['start_time'])}</b> "
+        f"у врача {new_a['doctor_name']} ({new_a['service_name']}).\n\n"
+        f"Устроит вас такое время?",
+        reply_markup=_reschedule_inline_kb(new_appointment_id),
+    )
+
+    return web.json_response({"ok": True, "new_appointment_id": new_appointment_id})
+
+
+def _reschedule_inline_kb(new_appointment_id: int):
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    b = InlineKeyboardBuilder()
+    b.button(text="✅ Подтверждаю", callback_data=f"pt:resched_yes:{new_appointment_id}")
+    b.button(text="❌ Не подходит, отменить", callback_data=f"pt:resched_no:{new_appointment_id}")
+    b.adjust(1)
+    return b.as_markup()
 
 
 @routes.post("/api/admin/appointments/{id}/complete")

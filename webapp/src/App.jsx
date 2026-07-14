@@ -432,6 +432,10 @@ function AdminDetail({ id, onBack, onDone }) {
   const [busy, setBusy] = useState(false)
   const [showAmountInput, setShowAmountInput] = useState(false)
   const [amount, setAmount] = useState('')
+  const [reschedStep, setReschedStep] = useState(null) // null | 'dates' | 'slots'
+  const [reschedDates, setReschedDates] = useState(null)
+  const [reschedSlots, setReschedSlots] = useState(null)
+  const [reschedDate, setReschedDate] = useState(null)
 
   function load() {
     api.adminAppointmentDetail(id).then(setA).catch((e) => setError(e.message))
@@ -456,6 +460,37 @@ function AdminDetail({ id, onBack, onDone }) {
     if (!amount || isNaN(Number(amount))) return
     setBusy(true)
     try { await api.adminComplete(id, Number(amount)); onDone() } catch (e) { setError(e.message) } finally { setBusy(false) }
+  }
+
+  async function startReschedule() {
+    setReschedStep('dates')
+    setReschedDates(null)
+    try {
+      const dates = await api.adminRescheduleDates(id)
+      setReschedDates(dates)
+    } catch (e) { setError(e.message) }
+  }
+
+  async function pickReschedDate(d) {
+    setReschedDate(d)
+    setReschedStep('slots')
+    setReschedSlots(null)
+    try {
+      const slots = await api.adminRescheduleSlots(id, d)
+      setReschedSlots(slots)
+    } catch (e) { setError(e.message) }
+  }
+
+  async function pickReschedSlot(slotId) {
+    setBusy(true)
+    try {
+      await api.adminReschedule(id, slotId)
+      onDone()
+    } catch (e) {
+      setError(e.message.includes('409') ? 'Этот слот уже заняли, выберите другой' : e.message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -491,11 +526,40 @@ function AdminDetail({ id, onBack, onDone }) {
 
       {error && <div className="error">{error}</div>}
 
-      {a.status === 'pending' && (
+      {a.status === 'pending' && !reschedStep && (
         <>
           <button className="btn-primary" disabled={busy} onClick={handleConfirm}>✅ Подтвердить</button>
+          <button className="btn-secondary" disabled={busy} onClick={startReschedule}>🔄 Предложить другое время</button>
           <button className="btn-secondary" disabled={busy} onClick={handleDecline}>❌ Отклонить</button>
         </>
+      )}
+
+      {reschedStep === 'dates' && (
+        <div className="card">
+          <div className="subtitle">Выберите новую дату</div>
+          {!reschedDates && <div className="loading">Загрузка…</div>}
+          {reschedDates && reschedDates.length === 0 && <div className="empty">Нет свободных дат у этого врача</div>}
+          <div className="grid">
+            {reschedDates && reschedDates.map((d) => (
+              <div key={d} className="chip" onClick={() => pickReschedDate(d)}>{fmtDate(d)}</div>
+            ))}
+          </div>
+          <button className="btn-secondary" onClick={() => setReschedStep(null)}>⬅️ Отмена</button>
+        </div>
+      )}
+
+      {reschedStep === 'slots' && (
+        <div className="card">
+          <div className="subtitle">Выберите время на {fmtDate(reschedDate)}</div>
+          {!reschedSlots && <div className="loading">Загрузка…</div>}
+          {reschedSlots && reschedSlots.length === 0 && <div className="empty">На эту дату свободного времени нет</div>}
+          <div className="grid cols-4">
+            {reschedSlots && reschedSlots.map((s) => (
+              <div key={s.id} className="chip" onClick={() => !busy && pickReschedSlot(s.id)}>{s.start_time}</div>
+            ))}
+          </div>
+          <button className="btn-secondary" onClick={() => setReschedStep('dates')}>⬅️ Назад к датам</button>
+        </div>
       )}
 
       {a.status === 'confirmed' && !showAmountInput && (

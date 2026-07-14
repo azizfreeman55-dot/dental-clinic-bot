@@ -54,6 +54,13 @@ export const api = {
   getMyRedemptions: () => request('/api/gifts/my'),
   adminRedemptions: () => request('/api/admin/redemptions'),
   adminMarkRedemptionUsed: (id) => request(`/api/admin/redemptions/${id}/use`, { method: 'POST' }),
+  adminRescheduleDates: (id) => request(`/api/admin/appointments/${id}/reschedule_dates`),
+  adminRescheduleSlots: (id, date) => request(`/api/admin/appointments/${id}/reschedule_slots?date=${date}`),
+  adminReschedule: (id, slotId) =>
+    request(`/api/admin/appointments/${id}/reschedule`, {
+      method: 'POST',
+      body: JSON.stringify({ slot_id: slotId }),
+    }),
 };
 
 export { tg };
