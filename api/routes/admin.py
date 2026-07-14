@@ -5,6 +5,7 @@ from database.pool import get_pool
 from database.queries.admin import (
     is_admin, get_admin_stats, get_appointments_by_status, get_appointments_for_date,
     get_appointment_full, complete_appointment_with_bonus,
+    get_pending_redemptions, mark_redemption_used,
 )
 from database.queries.appointments import confirm_appointment, cancel_appointment
 
@@ -231,3 +232,40 @@ async def admin_calendar(request: web.Request):
         }
         for a in appointments
     ])
+
+
+# ---------- Погашения подарков ----------
+
+@routes.get("/api/admin/redemptions")
+async def admin_redemptions_list(request: web.Request):
+    pool = await _check_admin(request)
+    if pool is None:
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    redemptions = await get_pending_redemptions(pool)
+    return web.json_response([
+        {
+            "id": r["id"],
+            "patient_name": r["patient_name"],
+            "phone": r["phone"],
+            "gift_name": r["gift_name"],
+            "cost_bonuses": r["cost_bonuses"],
+            "redeemed_at": r["redeemed_at"].isoformat(),
+        }
+        for r in redemptions
+    ])
+
+
+@routes.post("/api/admin/redemptions/{id}/use")
+async def admin_mark_redemption_used(request: web.Request):
+    pool = await _check_admin(request)
+    if pool is None:
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    redemption_id = int(request.match_info["id"])
+    ok = await mark_redemption_used(pool, redemption_id)
+
+    if not ok:
+        return web.json_response({"error": "not_found_or_already_used"}, status=404)
+
+    return web.json_response({"ok": True})

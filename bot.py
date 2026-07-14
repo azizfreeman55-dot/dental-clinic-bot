@@ -21,6 +21,7 @@ from bot_handlers.admin import appointments as admin_appointments
 from api.middleware import telegram_auth_middleware
 from api.routes import booking as api_booking
 from api.routes import admin as api_admin
+from api.routes import gifts as api_gifts
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -92,6 +93,7 @@ def main():
 
         app.add_routes(api_booking.routes)
         app.add_routes(api_admin.routes)
+        app.add_routes(api_gifts.routes)
 
         # раздача собранного Mini App (webapp/dist после `npm run build`).
         # aiohttp.static НЕ отдаёт index.html автоматически для корня папки (в отличие от nginx),

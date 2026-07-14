@@ -278,6 +278,7 @@ function AdminPanel({ onBack }) {
           onBack={onBack}
           onOpenList={(s) => { setStatus(s); setView('list') }}
           onOpenCalendar={() => setView('calendar')}
+          onOpenRedemptions={() => setView('redemptions')}
         />
       )}
       {view === 'list' && (
@@ -298,11 +299,14 @@ function AdminPanel({ onBack }) {
       {view === 'calendar' && (
         <AdminCalendar onBack={() => setView('home')} onOpen={(id) => { setSelectedId(id); setView('detail') }} />
       )}
+      {view === 'redemptions' && (
+        <AdminRedemptions onBack={() => setView('home')} />
+      )}
     </div>
   )
 }
 
-function AdminHome({ onBack, onOpenList, onOpenCalendar }) {
+function AdminHome({ onBack, onOpenList, onOpenCalendar, onOpenRedemptions }) {
   const [stats, setStats] = useState(null)
   const [error, setError] = useState(null)
 
@@ -360,6 +364,9 @@ function AdminHome({ onBack, onOpenList, onOpenCalendar }) {
       </button>
       <button className="list-item" onClick={onOpenCalendar}>
         <span>📅 Календарь по дням</span><span>›</span>
+      </button>
+      <button className="list-item" onClick={onOpenRedemptions}>
+        <span>🎁 Погашение подарков</span><span>›</span>
       </button>
 
       <button className="btn-secondary" onClick={onBack}>⬅️ На главную</button>
@@ -514,6 +521,52 @@ function AdminDetail({ id, onBack, onDone }) {
   )
 }
 
+function AdminRedemptions({ onBack }) {
+  const [items, setItems] = useState(null)
+  const [error, setError] = useState(null)
+  const [busyId, setBusyId] = useState(null)
+
+  function load() {
+    api.adminRedemptions().then(setItems).catch((e) => setError(e.message))
+  }
+
+  useEffect(() => { load() }, [])
+
+  async function handleMarkUsed(id) {
+    setBusyId(id)
+    try {
+      await api.adminMarkRedemptionUsed(id)
+      load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <div>
+      <div className="title">Погашение подарков</div>
+      {error && <div className="error">{error}</div>}
+      {!items && !error && <div className="loading">Загрузка…</div>}
+      {items && items.length === 0 && <div className="empty">Нет подарков, ожидающих выдачи</div>}
+
+      {items && items.map((r) => (
+        <div key={r.id} className="card">
+          <div style={{ fontWeight: 600 }}>{r.gift_name}</div>
+          <div>👤 {r.patient_name}{r.phone ? ` · ${r.phone}` : ''}</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Код: №{r.id} · {fmtMoney(r.cost_bonuses)} бонусов</div>
+          <button className="btn-primary" disabled={busyId === r.id} onClick={() => handleMarkUsed(r.id)} style={{ marginTop: 8 }}>
+            {busyId === r.id ? 'Отмечаем…' : '✅ Выдано, отметить использованным'}
+          </button>
+        </div>
+      ))}
+
+      <button className="btn-secondary" onClick={onBack}>⬅️ Назад</button>
+    </div>
+  )
+}
+
 function AdminCalendar({ onBack, onOpen }) {
   const todayISO = new Date().toISOString().slice(0, 10)
   const [date, setDate] = useState(todayISO)
@@ -657,14 +710,39 @@ function Level({ onBack }) {
 
 function Gifts({ onBack }) {
   const [me, setMe] = useState(null)
+  const [gifts, setGifts] = useState(null)
+  const [myRedemptions, setMyRedemptions] = useState(null)
+  const [tab, setTab] = useState('catalog') // catalog | mine
   const [error, setError] = useState(null)
+  const [busyId, setBusyId] = useState(null)
+  const [confirmGift, setConfirmGift] = useState(null)
 
-  useEffect(() => {
+  function loadAll() {
     api.getMe().then(setMe).catch((e) => setError(e.message))
-  }, [])
+    api.getGifts().then(setGifts).catch((e) => setError(e.message))
+    api.getMyRedemptions().then(setMyRedemptions).catch((e) => setError(e.message))
+  }
 
-  if (error) return <div className="error">{error}</div>
-  if (!me) return <div className="loading">Загрузка…</div>
+  useEffect(() => { loadAll() }, [])
+
+  async function doRedeem(gift) {
+    setBusyId(gift.id)
+    setError(null)
+    try {
+      await api.redeemGift(gift.id)
+      tg?.HapticFeedback?.notificationOccurred('success')
+      setConfirmGift(null)
+      loadAll()
+      setTab('mine')
+    } catch (e) {
+      setError(e.message.includes('409') || e.message.includes('insufficient') ? 'Недостаточно бонусов для этого подарка' : e.message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  if (error && !gifts) return <div className="error">{error}</div>
+  if (!me || !gifts || !myRedemptions) return <div className="loading">Загрузка…</div>
 
   return (
     <div>
@@ -673,7 +751,70 @@ function Gifts({ onBack }) {
         <div className="label">Ваш баланс</div>
         <div className="amount">{fmtMoney(me.bonus_balance)}</div>
       </div>
-      <div className="empty">Каталог подарков и услуг за бонусы скоро появится здесь 🎁</div>
+
+      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: 12 }}>
+        <div className="chip" onClick={() => setTab('catalog')} style={tab === 'catalog' ? { background: 'var(--accent)', color: 'white' } : {}}>
+          Каталог
+        </div>
+        <div className="chip" onClick={() => setTab('mine')} style={tab === 'mine' ? { background: 'var(--accent)', color: 'white' } : {}}>
+          Мои подарки {myRedemptions.length > 0 ? `(${myRedemptions.length})` : ''}
+        </div>
+      </div>
+
+      {error && <div className="error">{error}</div>}
+
+      {tab === 'catalog' && (
+        <>
+          {gifts.length === 0 && <div className="empty">Каталог пока пуст</div>}
+          {gifts.map((g) => {
+            const canAfford = me.bonus_balance >= g.cost_bonuses
+            return (
+              <div key={g.id} className="card">
+                <div style={{ fontWeight: 600 }}>{g.name}</div>
+                {g.description && <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 4 }}>{g.description}</div>}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+                  <span className="price">{fmtMoney(g.cost_bonuses)} бонусов</span>
+                  <button
+                    className="btn-secondary"
+                    style={{ width: 'auto', margin: 0, padding: '8px 16px', opacity: canAfford ? 1 : 0.5 }}
+                    disabled={!canAfford || busyId === g.id}
+                    onClick={() => setConfirmGift(g)}
+                  >
+                    {canAfford ? 'Обменять' : 'Не хватает бонусов'}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </>
+      )}
+
+      {tab === 'mine' && (
+        <>
+          {myRedemptions.length === 0 && <div className="empty">Вы ещё ничего не обменивали</div>}
+          {myRedemptions.map((r) => (
+            <div key={r.id} className="card">
+              <div style={{ fontWeight: 600 }}>{r.gift_name}</div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Код погашения: №{r.id}</div>
+              <div style={{ marginTop: 6 }}>
+                {r.status === 'pending' && <span style={{ color: 'var(--accent-lime)' }}>🟢 Готово к использованию — покажите администратору</span>}
+                {r.status === 'used' && <span style={{ color: 'var(--text-secondary)' }}>✓ Использовано</span>}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {confirmGift && (
+        <div className="card" style={{ borderColor: 'var(--accent)' }}>
+          <div>Обменять <b>{fmtMoney(confirmGift.cost_bonuses)}</b> бонусов на «{confirmGift.name}»?</div>
+          <button className="btn-primary" disabled={busyId === confirmGift.id} onClick={() => doRedeem(confirmGift)}>
+            {busyId === confirmGift.id ? 'Обмениваем…' : 'Подтвердить обмен'}
+          </button>
+          <button className="btn-secondary" onClick={() => setConfirmGift(null)}>Отмена</button>
+        </div>
+      )}
+
       <button className="btn-secondary" onClick={onBack}>⬅️ На главную</button>
     </div>
   )

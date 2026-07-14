@@ -27,6 +27,29 @@ async def ensure_admin(pool: asyncpg.Pool, telegram_id: int, full_name: str = "O
     )
 
 
+async def get_pending_redemptions(pool: asyncpg.Pool) -> list[asyncpg.Record]:
+    return await pool.fetch(
+        """
+        SELECT r.id, r.cost_bonuses, r.redeemed_at,
+               p.full_name AS patient_name, p.telegram_id AS patient_telegram_id, p.phone,
+               g.name AS gift_name
+        FROM gift_redemptions r
+        JOIN patients p ON p.id = r.patient_id
+        JOIN gifts_catalog g ON g.id = r.gift_id
+        WHERE r.status = 'pending'
+        ORDER BY r.redeemed_at
+        """
+    )
+
+
+async def mark_redemption_used(pool: asyncpg.Pool, redemption_id: int) -> bool:
+    result = await pool.execute(
+        "UPDATE gift_redemptions SET status = 'used', used_at = now() WHERE id = $1 AND status = 'pending'",
+        redemption_id,
+    )
+    return result.endswith("1")
+
+
 async def get_admin_stats(pool: asyncpg.Pool) -> asyncpg.Record:
     return await pool.fetchrow(
         """

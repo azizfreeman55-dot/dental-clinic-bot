@@ -47,6 +47,13 @@ export const api = {
       body: JSON.stringify({ amount_paid: amountPaid }),
     }),
   adminCalendar: (date) => request(`/api/admin/calendar?date=${date}`),
+
+  // Gifts
+  getGifts: () => request('/api/gifts'),
+  redeemGift: (id) => request(`/api/gifts/${id}/redeem`, { method: 'POST' }),
+  getMyRedemptions: () => request('/api/gifts/my'),
+  adminRedemptions: () => request('/api/admin/redemptions'),
+  adminMarkRedemptionUsed: (id) => request(`/api/admin/redemptions/${id}/use`, { method: 'POST' }),
 };
 
 export { tg };
