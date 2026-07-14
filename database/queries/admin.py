@@ -67,12 +67,19 @@ async def get_confirmed_upcoming_appointments(pool: asyncpg.Pool) -> list[asyncp
 async def get_appointment_full(pool: asyncpg.Pool, appointment_id: int) -> Optional[asyncpg.Record]:
     return await pool.fetchrow(
         """
-        SELECT a.id, a.status, a.patient_id, a.doctor_id,
+        SELECT a.id, a.status, a.patient_id, a.doctor_id, a.created_at, a.admin_comment,
                p.full_name AS patient_name, p.telegram_id AS patient_telegram_id,
-               p.id AS patient_pk, l.bonus_percent,
-               d.full_name AS doctor_name,
-               s.name AS service_name, s.price,
-               ds.date, ds.start_time
+               p.phone, p.id AS patient_pk, p.bonus_balance, p.lifetime_bonus_earned,
+               p.total_visits, p.created_at AS patient_since,
+               l.name AS level_name, l.bonus_percent,
+               d.full_name AS doctor_name, d.specialization AS doctor_specialization,
+               (SELECT MIN(t.start_time) FROM doctor_schedule_templates t
+                WHERE t.doctor_id = d.id AND t.active = TRUE) AS doctor_shift_start,
+               s.id AS service_id, s.name AS service_name, s.price, s.description AS service_description,
+               ds.date, ds.start_time,
+               (SELECT COUNT(*) FROM appointments a2
+                WHERE a2.patient_id = a.patient_id AND a2.status = 'completed') AS completed_visits_count,
+               (SELECT r.status FROM referrals r WHERE r.referred_id = a.patient_id) AS referral_status
         FROM appointments a
         JOIN patients p ON p.id = a.patient_id
         JOIN loyalty_levels l ON l.id = p.level_id

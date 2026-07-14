@@ -20,11 +20,18 @@ async def notify_admins_new_appointment(bot: Bot, pool: asyncpg.Pool, appointmen
         return
 
     price_str = f"{int(a['price']):,}".replace(",", " ")
+    balance_str = f"{a['bonus_balance']:,}".replace(",", " ")
+    is_first_visit = a["completed_visits_count"] == 0
+
+    phone_line = f"\n📱 {a['phone']}" if a["phone"] else ""
+    visit_note = "первый визит 🆕" if is_first_visit else f"визитов: {a['completed_visits_count']}"
+
     text = (
         f"🆕 Новая заявка на запись!\n\n"
-        f"👤 Пациент: {a['patient_name']}\n"
-        f"👨‍⚕️ Врач: {a['doctor_name']}\n"
-        f"💉 Услуга: {a['service_name']} — {price_str} сум\n"
+        f"👤 {a['patient_name']}{phone_line}\n"
+        f"⭐ Уровень {a['level_name']} · баланс {balance_str} · {visit_note}\n\n"
+        f"👨‍⚕️ {a['doctor_name']} ({a['doctor_specialization']})\n"
+        f"💉 {a['service_name']} — {price_str} сум\n"
         f"📅 {a['date'].day} {MONTHS_RU[a['date'].month - 1]} в {a['start_time'].strftime('%H:%M')}\n\n"
         f"Подтвердить или отклонить: /admin"
     )

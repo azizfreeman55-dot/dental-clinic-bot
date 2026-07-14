@@ -9,7 +9,12 @@ from database.queries.admin import (
     get_pending_appointments, get_confirmed_upcoming_appointments,
     get_appointment_full, complete_appointment_with_bonus,
 )
-from database.queries.appointments import confirm_appointment, cancel_appointment
+from database.queries.appointments import (
+    confirm_appointment, cancel_appointment,
+    propose_reschedule,
+)
+from database.queries.doctors import get_available_dates, shift_label
+from database.queries.appointments import get_free_slots
 from bot_handlers.admin.filters import IsAdmin
 from states import AdminStates
 
@@ -22,6 +27,13 @@ MONTHS_RU = ["янв", "фев", "мар", "апр", "май", "июн", "июл
 
 def _fmt_date(d, t):
     return f"{d.day} {MONTHS_RU[d.month - 1]} в {t.strftime('%H:%M')}"
+
+
+WEEKDAYS_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+
+
+def _fmt_date_only(d):
+    return f"{WEEKDAYS_RU[d.weekday()]} {d.day} {MONTHS_RU[d.month - 1]}"
 
 
 def admin_menu_kb():
@@ -51,7 +63,7 @@ async def list_pending(callback: CallbackQuery):
 
     b = InlineKeyboardBuilder()
     for a in appointments:
-        label = f"{a['patient_name']} — {_fmt_date(a['date'], a['start_time'])}"
+        label = f"{a['patient_name']} — {a['service_name']} — {_fmt_date(a['date'], a['start_time'])}"
         b.button(text=label, callback_data=f"adm:view:{a['id']}")
     b.button(text="⬅️ Назад", callback_data="adm:menu")
     b.adjust(1)
@@ -68,6 +80,8 @@ async def back_to_admin_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("adm:view:"))
 async def view_appointment(callback: CallbackQuery):
+    from database.queries.doctors import shift_label
+
     appointment_id = int(callback.data.split(":")[2])
     pool = get_pool()
     a = await get_appointment_full(pool, appointment_id)
@@ -77,13 +91,38 @@ async def view_appointment(callback: CallbackQuery):
         return
 
     price_str = f"{int(a['price']):,}".replace(",", " ")
+    balance_str = f"{a['bonus_balance']:,}".replace(",", " ")
+
+    is_first_visit = a["completed_visits_count"] == 0
+    referral_note = ""
+    if a["referral_status"] == "pending":
+        referral_note = "\n🔗 Пришёл по реферальной ссылке — при завершении визита сработает бонус за приглашение"
+    elif a["referral_status"] == "rewarded":
+        referral_note = "\n🔗 Пришёл по реферальной ссылке (бонус уже начислен ранее)"
+
+    phone_line = f"\n📱 Телефон: {a['phone']}" if a["phone"] else ""
+    description_line = f"\nℹ️ {a['service_description']}" if a["service_description"] else ""
+
     text = (
-        f"📋 Заявка №{a['id']}\n\n"
-        f"👤 Пациент: {a['patient_name']}\n"
-        f"👨‍⚕️ Врач: {a['doctor_name']}\n"
-        f"💉 Услуга: {a['service_name']} — {price_str} сум\n"
-        f"📅 Время: {_fmt_date(a['date'], a['start_time'])}\n"
-        f"Статус: {a['status']}"
+        f"📋 Заявка №{a['id']}  ·  статус: {a['status']}\n"
+        f"{'─' * 20}\n"
+        f"👤 КЛИЕНТ\n"
+        f"Имя: {a['patient_name']}{phone_line}\n"
+        f"Уровень: {a['level_name']} ({a['bonus_percent']}% с визита)\n"
+        f"Баланс бонусов: {balance_str}\n"
+        f"Завершённых визитов: {a['completed_visits_count']}"
+        f"{' (это будет первый визит)' if is_first_visit else ''}"
+        f"{referral_note}\n"
+        f"{'─' * 20}\n"
+        f"👨‍⚕️ ВРАЧ\n"
+        f"{a['doctor_name']} — {a['doctor_specialization']}\n"
+        f"{shift_label(a['doctor_shift_start'])}\n"
+        f"{'─' * 20}\n"
+        f"💉 УСЛУГА\n"
+        f"{a['service_name']} — {price_str} сум{description_line}\n"
+        f"{'─' * 20}\n"
+        f"📅 Дата приёма: {_fmt_date(a['date'], a['start_time'])}\n"
+        f"🕐 Заявка создана: {a['created_at'].strftime('%d.%m %H:%M')}"
     )
 
     b = InlineKeyboardBuilder()
@@ -122,6 +161,23 @@ async def do_confirm(callback: CallbackQuery, bot: Bot):
 
 
 @router.callback_query(F.data.startswith("adm:decline:"))
+async def decline_menu(callback: CallbackQuery):
+    appointment_id = int(callback.data.split(":")[2])
+
+    b = InlineKeyboardBuilder()
+    b.button(text="🔄 Предложить другое время", callback_data=f"adm:reschedule:{appointment_id}")
+    b.button(text="❌ Просто отклонить", callback_data=f"adm:decline_now:{appointment_id}")
+    b.button(text="⬅️ Назад", callback_data=f"adm:view:{appointment_id}")
+    b.adjust(1)
+
+    await callback.message.edit_text(
+        "Отклонить заявку или предложить пациенту другое время?",
+        reply_markup=b.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("adm:decline_now:"))
 async def do_decline(callback: CallbackQuery, bot: Bot):
     appointment_id = int(callback.data.split(":")[2])
     pool = get_pool()
@@ -139,6 +195,109 @@ async def do_decline(callback: CallbackQuery, bot: Bot):
     await list_pending(callback)
 
 
+# ---------- Предложить другое время ----------
+
+@router.callback_query(F.data.startswith("adm:reschedule:"))
+async def reschedule_pick_date(callback: CallbackQuery):
+    appointment_id = int(callback.data.split(":")[2])
+    pool = get_pool()
+
+    a = await get_appointment_full(pool, appointment_id)
+    if a is None:
+        await callback.answer("Заявка не найдена", show_alert=True)
+        return
+
+    dates = await get_available_dates(pool, a["doctor_id"])
+    if not dates:
+        await callback.answer("У этого врача нет свободных дат для переноса", show_alert=True)
+        return
+
+    b = InlineKeyboardBuilder()
+    for d in dates:
+        b.button(text=_fmt_date_only(d), callback_data=f"adm:resched_date:{appointment_id}:{d.isoformat()}")
+    b.button(text="⬅️ Назад", callback_data=f"adm:decline:{appointment_id}")
+    b.adjust(2)
+
+    await callback.message.edit_text(
+        f"Выберите новую дату для {a['patient_name']} ({a['doctor_name']}):",
+        reply_markup=b.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("adm:resched_date:"))
+async def reschedule_pick_slot(callback: CallbackQuery):
+    _, _, appointment_id, date_str = callback.data.split(":")
+    appointment_id = int(appointment_id)
+    from datetime import date as date_cls
+    chosen_date = date_cls.fromisoformat(date_str)
+
+    pool = get_pool()
+    a = await get_appointment_full(pool, appointment_id)
+    slots = await get_free_slots(pool, a["doctor_id"], chosen_date)
+
+    if not slots:
+        await callback.answer("На эту дату свободных слотов не осталось", show_alert=True)
+        return
+
+    b = InlineKeyboardBuilder()
+    for s in slots:
+        b.button(
+            text=s["start_time"].strftime("%H:%M"),
+            callback_data=f"adm:resched_slot:{appointment_id}:{s['id']}",
+        )
+    b.button(text="⬅️ Назад", callback_data=f"adm:reschedule:{appointment_id}")
+    b.adjust(4)
+
+    await callback.message.edit_text("Выберите время:", reply_markup=b.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("adm:resched_slot:"))
+async def reschedule_confirm(callback: CallbackQuery, bot: Bot):
+    _, _, appointment_id, slot_id = callback.data.split(":")
+    appointment_id = int(appointment_id)
+    slot_id = int(slot_id)
+
+    pool = get_pool()
+    a = await get_appointment_full(pool, appointment_id)
+
+    new_appointment_id = await propose_reschedule(
+        pool,
+        old_appointment_id=appointment_id,
+        patient_id=a["patient_pk"],
+        doctor_id=a["doctor_id"],
+        service_id=a["service_id"],
+        new_slot_id=slot_id,
+    )
+
+    if new_appointment_id is None:
+        await callback.answer("Этот слот уже заняли, выберите другой", show_alert=True)
+        return
+
+    new_a = await get_appointment_full(pool, new_appointment_id)
+
+    pb = InlineKeyboardBuilder()
+    pb.button(text="✅ Подтверждаю", callback_data=f"pt:resched_yes:{new_appointment_id}")
+    pb.button(text="❌ Не подходит, отменить", callback_data=f"pt:resched_no:{new_appointment_id}")
+    pb.adjust(1)
+
+    await bot.send_message(
+        new_a["patient_telegram_id"],
+        f"К сожалению, ваше время на {_fmt_date(a['date'], a['start_time'])} было занято.\n\n"
+        f"Но у нас есть свободное время: <b>{_fmt_date(new_a['date'], new_a['start_time'])}</b> "
+        f"у врача {new_a['doctor_name']} ({new_a['service_name']}).\n\n"
+        f"Устроит вас такое время?",
+        reply_markup=pb.as_markup(),
+    )
+
+    await callback.answer("Предложение отправлено пациенту")
+    await callback.message.edit_text(
+        f"✅ Пациенту {a['patient_name']} предложено новое время: {_fmt_date(new_a['date'], new_a['start_time'])}.\n"
+        f"Ждём его ответа."
+    )
+
+
 # ---------- Завершение визита + начисление бонусов ----------
 
 @router.callback_query(F.data == "adm:confirmed")
@@ -153,7 +312,7 @@ async def list_confirmed(callback: CallbackQuery):
 
     b = InlineKeyboardBuilder()
     for a in appointments:
-        label = f"{a['patient_name']} — {_fmt_date(a['date'], a['start_time'])}"
+        label = f"{a['patient_name']} — {a['service_name']} — {_fmt_date(a['date'], a['start_time'])}"
         b.button(text=label, callback_data=f"adm:view:{a['id']}")
     b.button(text="⬅️ Назад", callback_data="adm:menu")
     b.adjust(1)
