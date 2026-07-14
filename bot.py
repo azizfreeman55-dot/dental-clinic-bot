@@ -15,7 +15,7 @@ from database.migrate import apply_migrations
 from database.queries.admin import ensure_admin
 from services.slot_generator import generate_slots_for_all_doctors, setup_scheduler_jobs
 
-from bot_handlers import start, booking, referral
+from bot_handlers import start, booking, referral, profile
 from bot_handlers.admin import appointments as admin_appointments
 from api.middleware import telegram_auth_middleware
 from api.routes import booking as api_booking
@@ -29,6 +29,7 @@ def create_dispatcher() -> Dispatcher:
     dp.include_router(start.router)
     dp.include_router(booking.router)
     dp.include_router(referral.router)
+    dp.include_router(profile.router)
     dp.include_router(admin_appointments.router)
     return dp
 
