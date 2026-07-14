@@ -80,8 +80,16 @@ def main():
 
         app.add_routes(api_booking.routes)
 
-        # раздача собранного Mini App (webapp/dist после `npm run build`)
-        app.router.add_static("/webapp", path="webapp/dist")
+        # раздача собранного Mini App (webapp/dist после `npm run build`).
+        # aiohttp.static НЕ отдаёт index.html автоматически для корня папки (в отличие от nginx),
+        # поэтому ассеты и index.html регистрируем раздельно.
+        app.router.add_static("/webapp/assets", path="webapp/dist/assets")
+
+        async def serve_webapp_index(request):
+            return web.FileResponse("webapp/dist/index.html")
+
+        app.router.add_get("/webapp", serve_webapp_index)
+        app.router.add_get("/webapp/", serve_webapp_index)
 
         web.run_app(app, host="0.0.0.0", port=int(__import__("os").environ.get("PORT", 8080)))
     else:
