@@ -61,6 +61,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ slot_id: slotId }),
     }),
+
+  // Wheel
+  getWheelPrizes: () => request('/api/wheel/prizes'),
+  getWheelStatus: () => request('/api/wheel/status'),
+  spinWheel: () => request('/api/wheel/spin', { method: 'POST' }),
 };
 
 export { tg };

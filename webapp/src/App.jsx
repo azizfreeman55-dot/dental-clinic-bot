@@ -28,6 +28,7 @@ export default function App() {
       {screen === 'referral' && <Referral onBack={() => setScreen('home')} />}
       {screen === 'level' && <Level onBack={() => setScreen('home')} />}
       {screen === 'gifts' && <Gifts onBack={() => setScreen('home')} />}
+      {screen === 'wheel' && <Wheel onBack={() => setScreen('home')} />}
       {screen === 'admin' && <AdminPanel onBack={() => setScreen('home')} />}
     </div>
   )
@@ -64,6 +65,10 @@ function Home({ onNavigate }) {
       </button>
       <button className="list-item" onClick={() => onNavigate('gifts')}>
         <span>🎁 Бонусы и подарки</span>
+        <span>›</span>
+      </button>
+      <button className="list-item" onClick={() => onNavigate('wheel')}>
+        <span>🎰 Колесо фортуны</span>
         <span>›</span>
       </button>
       <button className="list-item" onClick={() => onNavigate('referral')}>
@@ -255,7 +260,140 @@ function List({ items, render, onSelect, onBack }) {
   )
 }
 
-// ---------- Admin Panel ----------
+// ---------- Wheel of Fortune ----------
+
+function buildConicGradient(prizes) {
+  const slice = 360 / prizes.length
+  const stops = prizes.map((p, i) => `${p.color} ${i * slice}deg ${(i + 1) * slice}deg`)
+  return `conic-gradient(${stops.join(', ')})`
+}
+
+function Wheel({ onBack }) {
+  const [prizes, setPrizes] = useState(null)
+  const [spinsAvailable, setSpinsAvailable] = useState(0)
+  const [error, setError] = useState(null)
+  const [rotation, setRotation] = useState(0)
+  const [spinning, setSpinning] = useState(false)
+  const [result, setResult] = useState(null)
+
+  useEffect(() => {
+    api.getWheelPrizes().then(setPrizes).catch((e) => setError(e.message))
+    api.getWheelStatus().then((s) => setSpinsAvailable(s.spins_available)).catch((e) => setError(e.message))
+  }, [])
+
+  async function handleSpin() {
+    if (spinning || spinsAvailable <= 0) return
+    setSpinning(true)
+    setResult(null)
+    setError(null)
+
+    try {
+      const res = await api.spinWheel()
+      const idx = prizes.findIndex((p) => p.id === res.prize_id)
+      const slice = 360 / prizes.length
+      const center = idx * slice + slice / 2
+      const jitter = (Math.random() - 0.5) * (slice * 0.6)
+      const targetMod = (360 - center + jitter + 360) % 360
+      const extraSpins = 5
+
+      setRotation((prev) => {
+        const prevMod = prev % 360
+        let delta = targetMod - prevMod
+        if (delta < 0) delta += 360
+        return prev + delta + extraSpins * 360
+      })
+
+      setTimeout(() => {
+        setResult(res)
+        setSpinsAvailable((s) => s - 1)
+        setSpinning(false)
+        tg?.HapticFeedback?.notificationOccurred(res.bonus_amount > 0 ? 'success' : 'warning')
+      }, 4000)
+    } catch (e) {
+      setSpinning(false)
+      setError(e.message.includes('409') ? 'Нет доступных вращений' : e.message)
+    }
+  }
+
+  if (error && !prizes) return <div className="error">{error}</div>
+  if (!prizes) return <div className="loading">Загрузка…</div>
+
+  const slice = 360 / prizes.length
+  const radius = 100
+
+  return (
+    <div>
+      <div className="title">Колесо фортуны</div>
+      <div className="subtitle">Доступно вращений: {spinsAvailable}</div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', margin: '20px 0', position: 'relative' }}>
+        <div style={{
+          position: 'absolute', top: -6, left: '50%', transform: 'translateX(-50%)',
+          width: 0, height: 0, borderLeft: '12px solid transparent', borderRight: '12px solid transparent',
+          borderTop: '20px solid var(--accent-lime)', zIndex: 2,
+        }} />
+        <div
+          style={{
+            width: 260, height: 260, borderRadius: '50%',
+            background: buildConicGradient(prizes),
+            border: '4px solid var(--border)',
+            position: 'relative',
+            transform: `rotate(${rotation}deg)`,
+            transition: spinning ? 'transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99)' : 'none',
+          }}
+        >
+          {prizes.map((p, i) => {
+            const center = i * slice + slice / 2
+            return (
+              <div
+                key={p.id}
+                style={{
+                  position: 'absolute', top: '50%', left: '50%',
+                  transform: `rotate(${center}deg)`,
+                  transformOrigin: '0 0',
+                  width: radius,
+                }}
+              >
+                <span style={{
+                  position: 'absolute', left: radius - 55, top: -8,
+                  transform: `rotate(${-center}deg)`,
+                  fontSize: 11, fontWeight: 700, color: 'white', width: 60, textAlign: 'center',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                }}>
+                  {p.name}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {error && <div className="error">{error}</div>}
+
+      {result && (
+        <div className="card" style={{ textAlign: 'center', borderColor: result.bonus_amount > 0 ? 'var(--accent-lime)' : 'var(--border)' }}>
+          {result.bonus_amount > 0 ? (
+            <>🎉 Поздравляем! Вы выиграли <b>{fmtMoney(result.bonus_amount)}</b> бонусов</>
+          ) : (
+            <>Не повезло в этот раз, попробуйте после следующего визита!</>
+          )}
+        </div>
+      )}
+
+      <button className="btn-primary" disabled={spinning || spinsAvailable <= 0} onClick={handleSpin}>
+        {spinning ? 'Крутится…' : spinsAvailable > 0 ? 'Крутить' : 'Нет вращений'}
+      </button>
+
+      {spinsAvailable <= 0 && (
+        <div className="subtitle" style={{ textAlign: 'center', marginTop: 8 }}>
+          Новое вращение начисляется за каждый завершённый визит
+        </div>
+      )}
+
+      <button className="btn-secondary" onClick={onBack}>⬅️ На главную</button>
+    </div>
+  )
+}
 
 const STATUS_LABELS = {
   pending: 'Ожидает подтверждения',

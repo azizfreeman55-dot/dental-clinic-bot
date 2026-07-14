@@ -238,6 +238,17 @@ async def complete_appointment_with_bonus(
                 patient_id,
             )
 
+            # начисляем вращение колеса фортуны за визит
+            await conn.execute(
+                """
+                INSERT INTO patient_wheel_credits (patient_id, spins_available)
+                VALUES ($1, 1)
+                ON CONFLICT (patient_id) DO UPDATE
+                SET spins_available = patient_wheel_credits.spins_available + 1
+                """,
+                patient_id,
+            )
+
             # это был первый визит пациента (visits_before == 0) — проверяем реферальный статус
             if visits_before == 0:
                 referral = await conn.fetchrow(
