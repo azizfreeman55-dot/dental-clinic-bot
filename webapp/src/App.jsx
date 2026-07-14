@@ -319,7 +319,7 @@ function Wheel({ onBack }) {
   if (!prizes) return <div className="loading">Загрузка…</div>
 
   const slice = 360 / prizes.length
-  const radius = 100
+  const radius = 110
 
   return (
     <div>
@@ -328,20 +328,30 @@ function Wheel({ onBack }) {
 
       <div style={{ display: 'flex', justifyContent: 'center', margin: '20px 0', position: 'relative' }}>
         <div style={{
-          position: 'absolute', top: -6, left: '50%', transform: 'translateX(-50%)',
-          width: 0, height: 0, borderLeft: '12px solid transparent', borderRight: '12px solid transparent',
-          borderTop: '20px solid var(--accent-lime)', zIndex: 2,
+          position: 'absolute', top: -10, left: '50%', transform: 'translateX(-50%)',
+          width: 0, height: 0, borderLeft: '14px solid transparent', borderRight: '14px solid transparent',
+          borderTop: '24px solid var(--accent-lime)', zIndex: 3,
+          filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.4))',
         }} />
         <div
           style={{
-            width: 260, height: 260, borderRadius: '50%',
+            width: 280, height: 280, borderRadius: '50%',
             background: buildConicGradient(prizes),
-            border: '4px solid var(--border)',
+            border: '6px solid var(--bg-card)',
+            outline: '2px solid var(--border)',
             position: 'relative',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.25)',
             transform: `rotate(${rotation}deg)`,
             transition: spinning ? 'transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99)' : 'none',
           }}
         >
+          {/* тонкие разделители между секторами */}
+          <div style={{
+            position: 'absolute', inset: 0, borderRadius: '50%',
+            background: `repeating-conic-gradient(from 0deg, rgba(255,255,255,0.35) 0deg 1.5deg, transparent 1.5deg ${slice}deg)`,
+            pointerEvents: 'none',
+          }} />
+
           {prizes.map((p, i) => {
             const center = i * slice + slice / 2
             return (
@@ -355,16 +365,31 @@ function Wheel({ onBack }) {
                 }}
               >
                 <span style={{
-                  position: 'absolute', left: radius - 55, top: -8,
+                  position: 'absolute', left: radius - 60, top: -8,
                   transform: `rotate(${-center}deg)`,
-                  fontSize: 11, fontWeight: 700, color: 'white', width: 60, textAlign: 'center',
-                  textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                  fontSize: 12, fontWeight: 800, color: 'white', width: 65, textAlign: 'center',
+                  textShadow: '0 1px 3px rgba(0,0,0,0.6)',
+                  letterSpacing: 0.2,
                 }}>
                   {p.name}
                 </span>
               </div>
             )
           })}
+        </div>
+
+        {/* декоративная втулка в центре */}
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+          width: 52, height: 52, borderRadius: '50%',
+          background: 'radial-gradient(circle at 35% 30%, #2a3f5c, var(--bg-card) 70%)',
+          border: '3px solid var(--accent-lime)',
+          boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
+          zIndex: 2,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 20,
+        }}>
+          🦷
         </div>
       </div>
 
